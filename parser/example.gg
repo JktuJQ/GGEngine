@@ -1,0 +1,22 @@
+// This is an example of .gg intermediate language
+
+
+SceneManager* - sceneManager ::= SceneManager
+
+// It's not necessary to write '()' when no arguments are passed
+
+
+Scene* - scene ::= Scene ("scene1")
+
+GameObject* - hero ::= GameObject ("hero_name" "new_tag")
+
+/*
+ 'GameObject*' is a type of variable
+ 'hero' is a variable_name
+ 'GameObject' is an object name
+ things in '()' are arguments
+*/
+
+
+scene -> addGameObject (hero)
+sceneManager -> addScene (scene)
