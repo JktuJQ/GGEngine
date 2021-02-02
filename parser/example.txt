@@ -1,0 +1,11 @@
+#include <GGEngine/headers/all.h>
+using namespace gg;
+
+class Game {
+public:
+	SceneManager* sceneManager = new SceneManager();
+	Scene* scene = new Scene("scene1");
+	GameObject* hero = new GameObject("hero_name", "new_tag");
+	scene->addGameObject(hero);
+	sceneManager->addScene(scene);
+};
