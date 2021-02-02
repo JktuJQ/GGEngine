@@ -8,6 +8,7 @@ wrapper classes.
 > While GGEngine takes care of all the logic of the game, the user is left 
 to draw on the screen.
 
+
 ### Architecture
 Architecture of **GGEngine** is basically the same as in Unity game engine but with some concepts.
 Game levels are represented by *Scene*, while the levels themselves are comprised of *GameObject*. 
@@ -18,6 +19,7 @@ All *Components* processing is done by *Processor*.
 To implement custom logic, you need to create a custom *Component* and, 
 in a class that inherits *Processor*, define the processing of this *Component*.
 
+
 ## Designer
 **GGEngine Designer** files are located in *designer* directory. 
 It helps creating *Scenes* with placing all *GameObjects*, *Sprites* and *Colliders*.
@@ -26,6 +28,7 @@ It uses an intermediate language for easy conversion to different languages, suc
 A standard parser that decomposes the code into a semantic tree is attached.
 
 Hints of building your own **GGEngine Designer** .exe file are written in "*designer/README.md*".
+
 
 ## GGEngine Parser
 **GGEngine Parser** files are located in *parser* directory.

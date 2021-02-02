@@ -1,7 +1,7 @@
 """
 Python script for parsing .gg files
 Second system arg must be a name of file to parse, third system arg must be a name of output file
-Fourth system argument can be the name of the programming language to be converted to (need to be in language_rule.py.rules.keys());
+Fourth system argument can be the name of the programming language to be converted to (need to be in language_rules.py.rules.keys());
     default='txt' which means nothing will be converted;
 
 Example:
@@ -33,7 +33,7 @@ def main(argc: int, argv: List[str]):
         print("No file specified for output")
         sys.exit(-1)
     elif argc == 4:
-        from language_rule import rules
+        from language_rules import rules
         if argv[3] in rules.keys() or argv[3] == "txt":
             convert_to = argv[3]
         else:

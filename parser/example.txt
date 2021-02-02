@@ -1,5 +1,5 @@
-var SceneManager* sceneManager SceneManager []
-var Scene* scene Scene ['"scene1"']
-var GameObject* hero GameObject ['"hero_name"', '"new_tag"']
+var SceneManager sceneManager SceneManager []
+var Scene scene Scene ['"scene1"']
+var GameObject hero GameObject ['"hero_name"', '"new_tag"']
 method scene addGameObject ['hero']
 method sceneManager addScene ['scene']
