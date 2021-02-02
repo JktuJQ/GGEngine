@@ -1,15 +1,27 @@
 """
 Python script for converting parsed .gg files in other programming languages by using rules
-
 Example:
     python convert.py cpp example.txt
+
+example.txt:
+    #include <GGEngine/headers/all.h>
+    using namespace gg;
+
+    class Game {
+    public:
+        SceneManager* sceneManager = new SceneManager();
+        Scene* scene = new Scene("scene1");
+        GameObject* hero = new GameObject("hero_name", "new_tag");
+        scene->addGameObject(hero);
+        sceneManager->addScene(scene);
+    };
 """
 
 from typing import List, Dict, Union
 import sys
 
 
-def main(argc: int, argv: List[str]):
+def convert(argc: int, argv: List[str]):
     if argc == 1:
         print("No given language to convert and no file to convert chosen")
         sys.exit(-1)
@@ -36,21 +48,21 @@ def main(argc: int, argv: List[str]):
             var_type = line.split()[1]
             var_name = line.split()[2]
             class_name = line.split()[3]
-            args = list(eval(line.split()[4]))
+            args = list(eval(" ".join(line.split()[4:])))
             converted_string = converted_string.format(var_type=var_type,
                                                        var_name=var_name,
                                                        class_name=class_name,
-                                                       args=args)
+                                                       args=", ".join(args))
             output_text += converted_string
 
         elif code_type == "method":
-            converted_string = rule["code"]["var"]
+            converted_string = rule["code"]["method"]
             var_name = line.split()[1]
             method_name = line.split()[2]
             args = list(eval(line.split()[3]))
             converted_string = converted_string.format(var_name=var_name,
                                                        method_name=method_name,
-                                                       args=args)
+                                                       args=", ".join(args))
             output_text += converted_string
     output_text += rule["end"]
     parsed_file.close()
@@ -63,4 +75,4 @@ def main(argc: int, argv: List[str]):
 
 
 if __name__ == "__main__":  # When executed as script, not imported
-    main(len(sys.argv), sys.argv)
+    convert(len(sys.argv), sys.argv)

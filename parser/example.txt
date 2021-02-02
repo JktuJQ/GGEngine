@@ -1,5 +1,11 @@
-var SceneManager sceneManager SceneManager []
-var Scene scene Scene ['"scene1"']
-var GameObject hero GameObject ['"hero_name"', '"new_tag"']
-method scene addGameObject ['hero']
-method sceneManager addScene ['scene']
+#include <GGEngine/headers/all.h>
+using namespace gg;
+
+class Game {
+public:
+	SceneManager* sceneManager = new SceneManager();
+	Scene* scene = new Scene("scene1");
+	GameObject* hero = new GameObject("hero_name", "new_tag");
+	scene->addGameObject(hero);
+	sceneManager->addScene(scene);
+};

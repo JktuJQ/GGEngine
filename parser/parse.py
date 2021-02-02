@@ -3,27 +3,41 @@ Python script for parsing .gg files
 Second system arg must be a name of file to parse, third system arg must be a name of output file
 Fourth system argument can be the name of the programming language to be converted to (need to be in language_rules.py.rules.keys());
     default='txt' which means nothing will be converted;
-
 Example:
     python parse.py example.gg example.txt
+
+    (or python parse.py example.gg example.txt cpp)
+
 example.txt:
     var SceneManager* sceneManager SceneManager []
     var Scene* scene Scene ['"scene1"']
     var GameObject* hero GameObject ['"hero_name"', '"new_tag"']
     method scene addGameObject ['hero']
     method sceneManager addScene ['scene']
+
+    (or
+    #include <GGEngine/headers/all.h>
+    using namespace gg;
+
+    class Game {
+    public:
+        SceneManager* sceneManager = new SceneManager();
+        Scene* scene = new Scene("scene1");
+        GameObject* hero = new GameObject("hero_name", "new_tag");
+        scene->addGameObject(hero);
+        sceneManager->addScene(scene);
+    };)
 """
 
 from typing import List
 import re
 import sys
-from os import system as cmd_execute
 
 __comments_pattern = re.compile(r"(\".*?(?<!\\)\"|\'.*?(?<!\\)\')|(/\*.*?\*/|//[^\r\n]*$)", re.MULTILINE | re.DOTALL)
 __args_pattern = re.compile(r"^\(\)$", re.DOTALL)
 
 
-def main(argc: int, argv: List[str]):
+def parse(argc: int, argv: List[str]):
     convert_to = "txt"
 
     if argc == 1:
@@ -72,11 +86,13 @@ def main(argc: int, argv: List[str]):
 
         # Convert
         output_file.writelines(output)
-        if convert_to != "txt":
-            cmd_execute(f"python convert.py {convert_to} {argv[2]}")
 
         parse_file.close()
         output_file.close()
+
+        if convert_to != "txt":
+            from convert import convert
+            convert(3, ["convert.py", convert_to, argv[2]])
 
     except FileNotFoundError:
         print("File is not found")
@@ -94,4 +110,4 @@ def main(argc: int, argv: List[str]):
 
 
 if __name__ == "__main__":  # When executed as script, not imported
-    main(len(sys.argv), sys.argv)
+    parse(len(sys.argv), sys.argv)
