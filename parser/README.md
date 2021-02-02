@@ -1,7 +1,7 @@
 GGParser
 ========
 
-**GGParser** - a couple of python scripts which are implementing .gg intermediate language
+**GGParser** -  a couple of python scripts which are implementing .gg intermediate language
 and a parser of it.
 > The main purpose of GGParser - make an easy way to share code between different programming
 > languages. The user can write one .gg file code and then convert it to as many programming languages
