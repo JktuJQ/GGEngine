@@ -20,8 +20,8 @@ To implement custom logic, you need to create a custom *Component* and,
 in a class that inherits *Processor*, define the processing of this *Component*.
 
 
-## Designer
-**GGEngine Designer** files are located in *designer* directory. 
+## GGDesigner
+**GGDesigner** files are located in *designer* directory. 
 It helps creating *Scenes* with placing all *GameObjects*, *Sprites* and *Colliders*.
 
 It uses an intermediate language for easy conversion to different languages, such as C++, Python. 
@@ -30,8 +30,8 @@ A standard parser that decomposes the code into a semantic tree is attached.
 Hints of building your own **GGEngine Designer** .exe file are written in "*designer/README.md*".
 
 
-## GGEngine Parser
-**GGEngine Parser** files are located in *parser* directory.
+## GGParser
+**GGParser** files are located in *parser* directory.
 It implements simple intermediate language .gg, 
 which can be converted in GGEngine library syntax on every programming language.
 
