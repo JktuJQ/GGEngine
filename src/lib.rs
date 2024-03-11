@@ -8,3 +8,6 @@
 #![warn(trivial_casts, trivial_numeric_casts)] // `casts`
 #![warn(missing_copy_implementations, missing_debug_implementations)] // `missing_*_implementations`
 #![warn(variant_size_differences, unreachable_pub)]
+
+// cores
+pub mod mathcore;
