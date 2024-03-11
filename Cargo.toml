@@ -1,0 +1,17 @@
+[package]
+name = "ggengine"
+description = "GGEngine - 2d game engine written in pure Rust that implements Unity-like interface."
+readme = "README.md"
+repository = "https://github.com/JktuJQ/GGEngine"
+
+authors = ["JktuJQ <odmamontov@gmail.com>"]
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+edition = "2021"
+
+keywords = ["ggengine", "gamedev", "engine", "graphics", "rust"]
+categories = ["game-engines", "multimedia"]
+
+[lib]
+name = "ggengine"
+path = "src/lib.rs"
