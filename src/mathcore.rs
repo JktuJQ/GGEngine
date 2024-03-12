@@ -5,3 +5,4 @@ mod ext;
 pub use ext::*;
 
 pub mod floats;
+pub mod vectors;
