@@ -6,5 +6,6 @@ pub use ext::*;
 
 pub mod floats;
 pub mod matrices;
+pub mod shapes;
 pub mod transforms;
 pub mod vectors;
