@@ -4,6 +4,7 @@
 mod ext;
 pub use ext::*;
 
+pub mod collisions;
 pub mod floats;
 pub mod matrices;
 pub mod shapes;
