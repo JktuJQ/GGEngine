@@ -9,6 +9,9 @@
 #![warn(missing_copy_implementations, missing_debug_implementations)] // `missing_*_implementations`
 #![warn(variant_size_differences, unreachable_pub)]
 
+// crates
+extern crate sdl2;
+
 // cores
 pub mod datacore;
 pub mod mathcore;
