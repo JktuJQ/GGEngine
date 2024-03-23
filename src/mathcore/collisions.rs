@@ -10,7 +10,7 @@ use crate::mathcore::{
 };
 
 /// `CollisionSystem` trait defines systems that can detect collisions between two shapes and
-/// and resolve collisions between them.
+/// resolve collisions between them.
 ///
 pub trait CollisionSystem<S1, S2>
 where
@@ -28,7 +28,11 @@ where
 /// `SATSystem` is a collision system that can detect and resolve collisions between two convex shapes
 /// by using algorithm which is based on separating axis theorem.
 ///
-/// One of main features of this system is that is returns early when there is no collision.
+/// One of main features of this system is that it returns early when there is no collision.
+///
+/// ### Applications
+/// This algorithm is preferred for collision detection when two shapes are not usually colliding, so you
+/// just need to handle the case when they are. Collision resolving of this algorithm is stable and quite fast.
 ///
 #[derive(Copy, Clone, Debug)]
 pub struct SATSystem;
@@ -107,18 +111,18 @@ where
     }
 }
 
-/// `DiagonalsSystem` is a collision system that uses intersections between shapes's edges and diagonals to detect and resolve collision.
+/// `DiagonalsSystem` is a collision system that uses intersections between shapes edges and diagonals to detect and resolve collision.
 ///
-/// One of main features of this system is that is returns early when there is collision
+/// One of main features of this system is that it returns early when there is collision
 /// (but collision resolving still requires full algorithm cycle).
 ///
-/// ### Note
+/// ### Applications
 /// There are few flaws of this algorithm:
 /// 1. One shape can be significantly smaller than other and due to high speed be placed inside other shape while not colliding with diagonals or edges.
 /// 2. Shape diagonal can be intersecting with another shape diagonal which will lead to doubling displacement which is a bit ugly.
 ///
-/// That said, using `SATSystem` algorithm for collision resolving is preferred (also early return can sometimes perform faster) and
-/// collision detection of this algorithm should primarily be used when two shapes are usually colliding and you just need to handle the case when they are not.
+/// That said, using `SATSystem` algorithm for collision resolving is preferred due to faster implementation and possible early returns and
+/// collision detection of this algorithm should primarily be used when two shapes are usually colliding, so you just need to handle the case when they are not.
 ///
 #[derive(Copy, Clone, Debug)]
 pub struct DiagonalsSystem;
@@ -215,7 +219,7 @@ pub fn is_colliding<S1: Shape, S2: Shape>(
 ///
 /// # Example
 /// ```rust
-/// # use ggengine::mathcore::collisions::{CollisionSystem, SATSystem, DiagonalsSystem, resolve};
+/// # use ggengine::mathcore::collisions::{CollisionSystem, SATSystem, DiagonalsSystem, resolve_collision};
 /// # use ggengine::mathcore::{shapes::{PolygonLike, Rect}, vectors::{Vertex, Point}, {Angle, Size}};
 /// let mut rect1: Rect = Rect::from_origin(
 ///     Point::from([0.0, 0.0]),
@@ -229,10 +233,10 @@ pub fn is_colliding<S1: Shape, S2: Shape>(
 ///     Size::from_value(2.0),
 ///     Size::from_value(2.0),
 /// );
-/// resolve(&SATSystem, &mut rect1, &rect2); // or `resolve(&DiagonalsSystem, &mut rect1, &rect2);`
+/// resolve_collision(&SATSystem, &mut rect1, &rect2); // or `resolve(&DiagonalsSystem, &mut rect1, &rect2);`
 /// ```
 ///
-pub fn resolve<S1: Shape, S2: Shape>(
+pub fn resolve_collision<S1: Shape, S2: Shape>(
     collision_system: &(impl CollisionSystem<S1, S2> + ?Sized),
     shape1: &mut S1,
     shape2: &S2,

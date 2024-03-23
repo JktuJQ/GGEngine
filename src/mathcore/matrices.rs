@@ -138,7 +138,7 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
 
     /// Returns transpose of initial matrix.
     ///
-    /// Interchanges its rows into columns (flips matrix over it's diagonal).
+    /// Interchanges its rows into columns (flips matrix over its diagonal).
     ///
     /// # Example
     /// ```rust
@@ -656,7 +656,7 @@ impl<const ROWS: usize, const COLUMNS: usize> From<[[f32; COLUMNS]; ROWS]>
     }
 }
 
-/// Type alias for 3x1 [`Matrix`] (is used to represent 2 dimensional vector).
+/// Type alias for 3x1 [`Matrix`] (is used to represent two-dimensional vector).
 ///
 pub type Matrix3x1 = Matrix<3, 1>;
 impl From<Vector2> for Matrix3x1 {
@@ -701,7 +701,7 @@ impl From<Matrix3x1> for Vector2 {
     ///     [0.75, 0.66, 0.0],
     ///     [0.0, 0.0, 1.0]
     /// ]);
-    /// let res: Vector2 = Vector2::from((rotation_matrix * Matrix3x1::from(vector)));
+    /// let res: Vector2 = Vector2::from(rotation_matrix * Matrix3x1::from(vector));
     /// assert_eq!(res, Vector2::from([-1.5, 1.32]));
     /// ```
     ///

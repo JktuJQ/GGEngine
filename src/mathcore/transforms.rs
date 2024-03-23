@@ -181,8 +181,8 @@ pub trait Translatable {
 /// [`Rotatable`] trait defines properties of rotating objects.
 ///
 /// Rotation should be performed on counterclockwise direction (`Transform::ROTATION` matrix supplies it),
-/// although on screen it would appear as clockwise (since y axis is directed down). That suggests
-/// that implementation of this trait should be using `Transform::ROTATION` matrix.
+/// although on screen it would appear as clockwise (since y-axis is directed down). That suggests
+/// that implementation of this trait should be using `Transform::ROTATION` matrix to be uniform relating to other objects.
 ///
 pub trait Rotatable {
     /// Returns current angle.

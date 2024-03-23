@@ -1,4 +1,4 @@
-//! `mathcore::ext` hidden submodule supplies helper newtypes, enums, structs and etc. that are
+//! `mathcore::ext` hidden submodule supplies helper newtypes, enums, structs etc. that are
 //! used throughout `ggengine` crate.
 //!
 
@@ -133,55 +133,55 @@ impl Angle {
     /// Angle that corresponds to zero.
     ///
     pub const ZERO: Angle = Angle(0.0);
-    /// Angle that corresponds to 30 degree angle.
+    /// Angle that corresponds to 30-degree angle.
     ///
     pub const DEG30: Angle = Angle(FRAC_PI_6);
-    /// Angle that corresponds to 45 degree angle.
+    /// Angle that corresponds to 45-degree angle.
     ///
     pub const DEG45: Angle = Angle(FRAC_PI_4);
-    /// Angle that corresponds to 60 degree angle.
+    /// Angle that corresponds to 60-degree angle.
     ///
     pub const DEG60: Angle = Angle(FRAC_PI_3);
 
-    /// Angle that corresponds to 90 degree angle.
+    /// Angle that corresponds to 90-degree angle.
     ///
     pub const DEG90: Angle = Angle(1.0 * FRAC_PI_2);
-    /// Angle that corresponds to 120 degree angle.
+    /// Angle that corresponds to 120-degree angle.
     ///
     pub const DEG120: Angle = Angle(1.0 * FRAC_PI_2 + FRAC_PI_6);
-    /// Angle that corresponds to 135 degree angle.
+    /// Angle that corresponds to 135-degree angle.
     ///
     pub const DEG135: Angle = Angle(1.0 * FRAC_PI_2 + FRAC_PI_4);
-    /// Angle that corresponds to 150 degree angle.
+    /// Angle that corresponds to 150-degree angle.
     ///
     pub const DEG150: Angle = Angle(1.0 * FRAC_PI_2 + FRAC_PI_3);
 
-    /// Angle that corresponds to 180 degree angle.
+    /// Angle that corresponds to 180-degree angle.
     ///
     pub const DEG180: Angle = Angle(2.0 * FRAC_PI_2);
-    /// Angle that corresponds to 210 degree angle.
+    /// Angle that corresponds to 210-degree angle.
     ///
     pub const DEG210: Angle = Angle(2.0 * FRAC_PI_2 + FRAC_PI_6);
-    /// Angle that corresponds to 225 degree angle.
+    /// Angle that corresponds to 225-degree angle.
     ///
     pub const DEG225: Angle = Angle(2.0 * FRAC_PI_2 + FRAC_PI_4);
-    /// Angle that corresponds to 240 degree angle.
+    /// Angle that corresponds to 240-degree angle.
     ///
     pub const DEG240: Angle = Angle(2.0 * FRAC_PI_2 + FRAC_PI_3);
 
-    /// Angle that corresponds to 270 degree angle.
+    /// Angle that corresponds to 270-degree angle.
     ///
     pub const DEG270: Angle = Angle(3.0 * FRAC_PI_2);
-    /// Angle that corresponds to 300 degree angle.
+    /// Angle that corresponds to 300-degree angle.
     ///
     pub const DEG300: Angle = Angle(3.0 * FRAC_PI_2 + FRAC_PI_6);
-    /// Angle that corresponds to 315 degree angle.
+    /// Angle that corresponds to 315-degree angle.
     ///
     pub const DEG315: Angle = Angle(3.0 * FRAC_PI_2 + FRAC_PI_4);
-    /// Angle that corresponds to 330 degree angle.
+    /// Angle that corresponds to 330-degree angle.
     ///
     pub const DEG330: Angle = Angle(3.0 * FRAC_PI_2 + FRAC_PI_3);
-    /// Angle that corresponds to 360 degree angle
+    /// Angle that corresponds to 360-degree angle
     /// (since angles are restricted, it equals to zero angle).
     ///
     pub const DEG360: Angle = Angle(0.0);

@@ -40,7 +40,7 @@ impl Segment {
     /// Returns `k` coefficient of a line that contains this segment.
     ///
     /// `k` stands for a gradient or a tangent of inclination angle of a line or a derivative from its equation ->
-    /// `y = kx + b`, `k = tg(a) = y'`.
+    /// `y = kx + b`, `k = tg(a) = dy/dx`.
     /// For vertical lines `k` equals `+inf`/`-inf` depending on direction of a segment.
     ///
     pub fn k(&self) -> f32 {
@@ -92,7 +92,7 @@ impl Segment {
             && match d_sign {
                 Sign::Positive => s <= d && t <= d,
                 Sign::Negative => s >= d && t >= d,
-                Sign::Zero => unreachable!("Collinearity is already checked out."),
+                Sign::Zero => unreachable!("Zero case is already checked out"),
             }
         {
             let t: f32 = t / d;
@@ -149,7 +149,7 @@ impl From<[Point; 2]> for Segment {
     }
 }
 
-/// [`Shape`] trait defines two dimensional shape on a plane which can be transformed.
+/// [`Shape`] trait defines two-dimensional shape on a plane which can be transformed.
 ///
 pub trait Shape: Transformable {
     /// Returns perimeter of a shape.
@@ -185,7 +185,7 @@ pub trait PolygonLike: Shape {
         edges
     }
 }
-/// Implements `Shape`'s `contains_point` method for struct that must implement `PolygonLike` trait.
+/// Implements `Shape::contains_point` method for struct that implements `PolygonLike` trait.
 ///
 macro_rules! impl_contains_point_for_polygonlike {
     () => {
@@ -223,7 +223,7 @@ macro_rules! impl_contains_point_for_polygonlike {
         }
     };
 }
-/// [`Convex`] trait defines polygons which are convex (every internal angle is strictly less than 180 degrees).
+/// [`Convex`] mark trait defines polygons which are convex (every internal angle is strictly less than 180 degrees).
 ///
 pub trait Convex: PolygonLike {}
 

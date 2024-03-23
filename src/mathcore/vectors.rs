@@ -189,7 +189,7 @@ macro_rules! impl_vectori {
     };
 }
 
-// All of the following macros depend on [`impl_vector`] macro.
+// All the following macros depend on [`impl_vector`] macro.
 /// [`impl_vector_vector_operations`] macro implements vector-vector operations for vector.
 ///
 macro_rules! impl_vector_vector_operations {
@@ -290,7 +290,7 @@ impl Vector2 {
         self.y = elements[1];
     }
 
-    /// Returns scalar that represents cross product of 2 dimensional vectors.
+    /// Returns scalar that represents cross product of two-dimensional vectors.
     ///
     pub fn cross_product(self, other: Self) -> f32 {
         (self.x * other.y) - (self.y * other.x)
@@ -302,7 +302,7 @@ impl_vector_operations!(Vector2, f32);
 impl BitXor for Vector2 {
     type Output = f32;
 
-    /// Returns scalar that represents cross product of 2 dimensional vectors.
+    /// Returns scalar that represents cross product of two-dimensional vectors.
     ///
     fn bitxor(self, rhs: Self) -> Self::Output {
         self.cross_product(rhs)
@@ -349,7 +349,7 @@ impl Vector2Int {
         self.y = elements[1];
     }
 
-    /// Returns scalar that represents cross product of 2 dimensional vectors.
+    /// Returns scalar that represents cross product of two-dimensional vectors.
     ///
     pub fn cross_product(self, other: Self) -> i32 {
         (self.x * other.y) - (self.y * other.x)
@@ -361,7 +361,7 @@ impl_vector_operations!(Vector2Int, i32);
 impl BitXor for Vector2Int {
     type Output = i32;
 
-    /// Returns scalar that represents cross product of 2 dimensional vectors.
+    /// Returns scalar that represents cross product of two-dimensional vectors.
     ///
     fn bitxor(self, rhs: Self) -> Self::Output {
         self.cross_product(rhs)
