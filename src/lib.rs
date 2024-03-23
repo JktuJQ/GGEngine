@@ -10,4 +10,5 @@
 #![warn(variant_size_differences, unreachable_pub)]
 
 // cores
+pub mod datacore;
 pub mod mathcore;
