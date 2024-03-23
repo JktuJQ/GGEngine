@@ -22,3 +22,6 @@ pub mod matrices;
 pub mod shapes;
 pub mod transforms;
 pub mod vectors;
+
+// prelude
+pub mod prelude;
