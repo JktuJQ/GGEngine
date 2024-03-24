@@ -1,5 +1,8 @@
 //! `ggengine::mathcore` module is a core that implements all math functionality for engine.
 //!
+//! # Prelude
+//! `ggengine::mathcore` prelude can be imported with `use ggengine::mathcore::prelude::*`.
+//!
 //! # Model
 //! There are several very important constructs that are essential to game engine.
 //! Vectors usually represent directions and coordinates.
