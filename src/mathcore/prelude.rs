@@ -10,8 +10,6 @@
 
 // re-exports
 pub use crate::mathcore::collisions::*;
-#[doc(hidden)]
-pub use crate::mathcore::ext::*;
 pub use crate::mathcore::floats::*;
 pub use crate::mathcore::matrices::*;
 pub use crate::mathcore::shapes::*;

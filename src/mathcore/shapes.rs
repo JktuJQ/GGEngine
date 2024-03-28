@@ -9,7 +9,7 @@ use crate::mathcore::{
     {Angle, Sign, Size},
 };
 
-/// [`Segment`] struct represents 2d line segment.
+/// [`Segment`] struct represents two-dimensional line segment.
 ///
 /// This struct is not an implementor of `Shape` traits because most of associated functions make
 /// no sense for line segment (e.g. `perimeter` and `area` from `Shape`, `scale` and `set_size` from `Scalable`).
@@ -227,7 +227,7 @@ macro_rules! impl_contains_point_for_polygonlike {
 ///
 pub trait Convex: PolygonLike {}
 
-/// [`Rect`] struct represents transformable 2d rectangle on a surface.
+/// [`Rect`] struct represents transformable two-dimensional rectangle on a surface.
 ///
 /// # Examples
 /// ### Initialization

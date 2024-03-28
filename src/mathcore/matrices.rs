@@ -709,7 +709,7 @@ impl From<Matrix3x1> for Vector2 {
         Vector2::from([matrix[0][0], matrix[1][0]])
     }
 }
-/// Type alias for 3x3 [`Matrix`] (2 dimensional transform matrix).
+/// Type alias for 3x3 [`Matrix`] (two-dimensional transform matrix).
 ///
 pub type Matrix3x3 = Matrix<3, 3>;
 impl Matrix3x3 {
@@ -720,13 +720,10 @@ impl Matrix3x3 {
     }
 }
 
-// unittests
 #[cfg(test)]
 mod tests {
     use super::Matrix;
 
-    /// Tests traits that are implemented by [`Matrix`] struct except for those that are doc-tested.
-    ///
     #[test]
     fn matrix() {
         let m1: Matrix<1, 3> = Matrix::from([[1.0, 2.0, 3.0]]);

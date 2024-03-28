@@ -394,7 +394,8 @@ impl Size {
         size.abs()
     }
 
-    /// Initializes [`Size`] from `f32` value
+    /// Initializes [`Size`] from `f32` value.
+    ///
     pub fn from_value(value: f32) -> Self {
         Size(Self::normalize(value))
     }
@@ -627,7 +628,7 @@ impl Color {
     }
     /// Initializes red, green and blue components of color performing HSV to RGB conversion.
     ///
-    /// `s` and `v` should be in [0.0, 1.0] range or else they would be clamped to that range.
+    /// `s` and `v` should be in [0.0; 1.0] range or else they would be clamped to that range.
     ///
     /// # Examples
     /// ```rust
@@ -667,7 +668,7 @@ impl Color {
     }
     /// Initializes red, green and blue components of color performing HSL to RGB conversion.
     ///
-    /// `s` and `l` should be in [0.0, 1.0] range or else they would be clamped to that range.
+    /// `s` and `l` should be in [0.0; 1.0] range or else they would be clamped to that range.
     ///
     /// # Examples
     /// ```rust

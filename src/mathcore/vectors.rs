@@ -265,7 +265,7 @@ macro_rules! impl_vector_operations {
     }
 }
 
-/// [`Vector2`] struct represents 2d vector and 2d point with `f32` coordinates on a plane.
+/// [`Vector2`] struct represents two-dimensional vector and two-dimensional point with `f32` coordinates on a plane.
 ///
 #[derive(Copy, Clone, Debug)]
 pub struct Vector2 {
@@ -324,7 +324,7 @@ pub type Point = Vector2;
 ///
 pub type Vertex = Point;
 
-/// [`Vector2Int`] struct represents 2d vector and 2d point with `i32` coordinates on a plane.
+/// [`Vector2Int`] struct represents two-dimensional vector and two-dimensional point with `i32` coordinates on a plane.
 ///
 #[derive(Copy, Clone, Debug)]
 pub struct Vector2Int {
@@ -383,13 +383,10 @@ pub type PointInt = Vector2Int;
 ///
 pub type VertexInt = PointInt;
 
-// unittests
 #[cfg(test)]
 mod tests {
     use crate::mathcore::floats::FloatOperations;
 
-    /// Tests all methods and traits that are required by vectors.
-    ///
     #[test]
     fn vector() {
         use super::{Vector2, Vector2Int};
@@ -499,8 +496,6 @@ mod tests {
         );
     }
 
-    /// Tests methods and traits that are required by float value vectors.
-    ///
     #[test]
     fn vectorf() {
         use super::Vector2;
@@ -531,13 +526,9 @@ mod tests {
         assert_eq!(vec5.sqr_magnitude(), 2.0);
     }
 
-    /// Tests all methods and traits that are required by integer value vectors.
-    ///
     #[test]
     fn vectori() {}
 
-    /// Tests all methods and traits that are implemented only by [`Vector2`].
-    ///
     #[test]
     fn vector2() {
         use super::{Vector2, Vector2Int};
@@ -552,8 +543,6 @@ mod tests {
         );
     }
 
-    /// Tests all methods and traits that are implemented only by [`Vector2Int`].
-    ///
     #[test]
     fn vector2int() {
         use super::{Vector2, Vector2Int};
