@@ -8,3 +8,4 @@
 
 // submodules and public re-exports
 pub mod audio;
+pub mod images;
