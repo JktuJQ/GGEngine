@@ -7,6 +7,8 @@ use crate::mathcore::{
     vectors::Vector2,
     Sign,
 };
+use serde::{Deserialize, Serialize};
+use serde_big_array::Array;
 use std::ops::{
     Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Neg, Sub, SubAssign,
 };
@@ -15,11 +17,11 @@ use std::ops::{
 ///
 /// It also implements various matrix operations with second operand being either matrix or number.
 ///
-#[derive(Copy, Clone, Debug)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug)]
 pub struct Matrix<const ROWS: usize, const COLUMNS: usize> {
     /// Underlying array.
     ///
-    pub arr: [[f32; COLUMNS]; ROWS],
+    arr: Array<Array<f32, COLUMNS>, ROWS>,
 }
 impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
     /// Returns count of matrix rows.
@@ -58,6 +60,22 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
     pub fn size(&self) -> (usize, usize) {
         (ROWS, COLUMNS)
     }
+    /// Returns matrix as an array.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::mathcore::matrices::Matrix;
+    /// let matrix: Matrix<3, 3> = Matrix::zero();
+    /// assert_eq!(matrix.as_array(), [[0.0; 3]; 3]);
+    /// ```
+    ///
+    pub fn as_array(&self) -> [[f32; COLUMNS]; ROWS] {
+        let mut arr: [[f32; COLUMNS]; ROWS] = [[0.0; COLUMNS]; ROWS];
+        for (r, item) in self.arr.iter().enumerate().take(ROWS) {
+            arr[r] = item.0;
+        }
+        arr
+    }
 
     /// Initializes matrix with zeroes.
     ///
@@ -65,12 +83,12 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
     /// ```rust
     /// # use ggengine::mathcore::matrices::Matrix;
     /// let matrix: Matrix<3, 4> = Matrix::zero();
-    /// assert_eq!(matrix.arr, [[0.0; 4]; 3]);
+    /// assert_eq!(matrix.as_array(), [[0.0; 4]; 3]);
     /// ```
     ///
     pub fn zero() -> Self {
         Self {
-            arr: [[0.0; COLUMNS]; ROWS],
+            arr: Array([Array([0.0; COLUMNS]); ROWS]),
         }
     }
 
@@ -80,12 +98,12 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
     /// ```rust
     /// # use ggengine::mathcore::matrices::Matrix;
     /// let matrix: Matrix<3, 4> = Matrix::one();
-    /// assert_eq!(matrix.arr, [[1.0; 4]; 3]);
+    /// assert_eq!(matrix.as_array(), [[1.0; 4]; 3]);
     /// ```
     ///
     pub fn one() -> Self {
         Self {
-            arr: [[1.0; COLUMNS]; ROWS],
+            arr: Array([Array([1.0; COLUMNS]); ROWS]),
         }
     }
 
@@ -98,7 +116,7 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
     /// # use ggengine::mathcore::matrices::Matrix;
     /// let mut matrix: Matrix<1, 4> = Matrix::from([[1.0, 2.0, 3.0, 4.0]]);
     /// matrix = matrix.map(|x| x + 1.0);
-    /// assert_eq!(matrix.arr, [[2.0, 3.0, 4.0, 5.0]]);
+    /// assert_eq!(matrix.as_array(), [[2.0, 3.0, 4.0, 5.0]]);
     /// ```
     ///
     pub fn map(self, f: impl Fn(f32) -> f32) -> Matrix<ROWS, COLUMNS> {
@@ -119,7 +137,7 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
     /// # use ggengine::mathcore::matrices::Matrix;
     /// let m1: Matrix<1, 4> = Matrix::from([[1.0, 2.0, 2.0, 1.0]]);
     /// let m2: Matrix<1, 4> = Matrix::from([[2.0, 1.0, 1.0, 2.0]]);
-    /// assert_eq!(m1.combine(m2, |a, b| a + b).arr, [[3.0; 4]]);
+    /// assert_eq!(m1.combine(m2, |a, b| a + b).as_array(), [[3.0; 4]]);
     /// ```
     ///
     pub fn combine(
@@ -149,7 +167,7 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
     ///     [1.0, 2.0, 3.0]
     /// ]);
     /// assert_eq!(
-    ///     matrix.transpose().arr,
+    ///     matrix.transpose().as_array(),
     ///     [
     ///         [1.0; 3],
     ///         [2.0; 3],
@@ -221,7 +239,7 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
     ///     [2.0, 4.0, -3.0, 29.0]
     /// ]);
     /// assert_eq!(
-    ///     matrix.rref().correct(0).arr,
+    ///     matrix.rref().correct(0).as_array(),
     ///     [
     ///         [1.0, 0.0, 0.0, 2.0],
     ///         [0.0, 1.0, 0.0, 4.0],
@@ -250,7 +268,7 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
     /// # use ggengine::mathcore::matrices::Matrix;
     /// let m1: Matrix<1, 3> = Matrix::from([[1.0, 2.0, 3.0]]);
     /// let m2: Matrix<3, 1> = Matrix::from([[1.0], [2.0], [3.0]]);
-    /// assert_eq!(m1.dot_product(m2).arr, [[14.0]]);
+    /// assert_eq!(m1.dot_product(m2).as_array(), [[14.0]]);
     /// ```
     ///
     pub fn dot_product<const RHS_COLUMNS: usize>(
@@ -315,7 +333,7 @@ impl<const N: usize> Matrix<N, N> {
     ///     [0.0, -4.0, -3.0, 2.0]
     /// ]);
     /// let ef: Matrix<4, 4> = matrix.echelon_form();
-    /// assert_eq!(ef.arr,
+    /// assert_eq!(ef.as_array(),
     ///     [
     ///         [2.0, 3.0, 3.0, 1.0],
     ///         [0.0, -4.0, -4.0, -4.0],
@@ -339,7 +357,7 @@ impl<const N: usize> Matrix<N, N> {
     /// # use ggengine::mathcore::matrices::Matrix;
     /// let matrix: Matrix<3, 3> = Matrix::identity();
     /// assert_eq!(
-    ///     matrix.arr,
+    ///     matrix.as_array(),
     ///     [
     ///         [1.0, 0.0, 0.0],
     ///         [0.0, 1.0, 0.0],
@@ -408,7 +426,7 @@ impl<const N: usize> Matrix<N, N> {
     ///     .inverse()
     ///     .expect("Should not fail: determinant is not equal to zero.").round_up_to(2);
     /// assert_eq!(
-    ///     inverse.arr,
+    ///     inverse.as_array(),
     ///     [
     ///         [0.5, -0.5, 0.0],
     ///         [0.0, -1.0, 1.0],
@@ -454,7 +472,7 @@ impl<const ROWS: usize, const COLUMNS: usize> FloatOperations for Matrix<ROWS, C
     /// # use ggengine::mathcore::matrices::Matrix;
     /// # use ggengine::mathcore::floats::FloatOperations;
     /// let mut matrix: Matrix<1, 3> = Matrix::from([[-0.0, 0.00000001, 0.99999999]]).correct(0);
-    /// assert_eq!(matrix.arr, [[0.0, 0.0, 1.0]]);
+    /// assert_eq!(matrix.as_array(), [[0.0, 0.0, 1.0]]);
     /// ```
     ///
     fn correct(self, digits: i32) -> Self {
@@ -468,7 +486,7 @@ impl<const ROWS: usize, const COLUMNS: usize> FloatOperations for Matrix<ROWS, C
     /// # use ggengine::mathcore::matrices::Matrix;
     /// # use ggengine::mathcore::floats::FloatOperations;
     /// let mut matrix: Matrix<1, 3> = Matrix::from([[0.015, 0.00005, 0.1]]).round_up_to(2);
-    /// assert_eq!(matrix.arr, [[0.02, 0.00, 0.10]]);
+    /// assert_eq!(matrix.as_array(), [[0.02, 0.00, 0.10]]);
     /// ```
     ///
     fn round_up_to(self, digits: i32) -> Self {
@@ -638,11 +656,14 @@ impl<const ROWS: usize, const COLUMNS: usize> PartialEq for Matrix<ROWS, COLUMNS
     /// Checks if matrices are equal.
     ///
     fn eq(&self, other: &Self) -> bool {
-        self.arr
-            .iter()
-            .flatten()
-            .zip(other.arr.iter().flatten())
-            .all(|(&a, &b)| equal(a, b))
+        for r in 0..ROWS {
+            for c in 0..COLUMNS {
+                if !equal(self.arr[r][c], other.arr[r][c]) {
+                    return false;
+                }
+            }
+        }
+        true
     }
 }
 impl<const ROWS: usize, const COLUMNS: usize> Eq for Matrix<ROWS, COLUMNS> {}
@@ -652,7 +673,11 @@ impl<const ROWS: usize, const COLUMNS: usize> From<[[f32; COLUMNS]; ROWS]>
     /// Shorthand for writing `Matrix { arr: ... }`.
     ///
     fn from(arr: [[f32; COLUMNS]; ROWS]) -> Self {
-        Matrix { arr }
+        let mut array: Array<Array<f32, COLUMNS>, ROWS> = Array([Array([0.0; COLUMNS]); ROWS]);
+        for r in 0..ROWS {
+            array[r] = Array(arr[r]);
+        }
+        Matrix { arr: array }
     }
 }
 
@@ -675,7 +700,7 @@ impl From<Vector2> for Matrix3x1 {
     ///     [0.0, 0.0, 1.0]
     /// ]);
     /// assert_eq!(
-    ///     (rotation_matrix * Matrix3x1::from(vector)).arr,
+    ///     (rotation_matrix * Matrix3x1::from(vector)).as_array(),
     ///     [
     ///         [-1.5],
     ///         [1.32],
@@ -732,27 +757,27 @@ mod tests {
         let m2: Matrix<1, 3> = Matrix::from([[3.0, 2.0, 1.0]]);
         let mut m3: Matrix<1, 3> = m1;
 
-        assert_eq!((m1 + m2).arr, [[4.0; 3]]);
-        assert_eq!((m1 - m2).arr, [[-2.0, 0.0, 2.0]]);
-        assert_eq!((m1 * m2.transpose()).arr, [[10.0]]);
+        assert_eq!((m1 + m2).as_array(), [[4.0; 3]]);
+        assert_eq!((m1 - m2).as_array(), [[-2.0, 0.0, 2.0]]);
+        assert_eq!((m1 * m2.transpose()).as_array(), [[10.0]]);
 
         m3 += m2;
-        assert_eq!(m3.arr, [[4.0; 3]]);
+        assert_eq!(m3.as_array(), [[4.0; 3]]);
         m3 -= m2;
-        assert_eq!(m3.arr, [[1.0, 2.0, 3.0]]);
+        assert_eq!(m3.as_array(), [[1.0, 2.0, 3.0]]);
 
-        assert_eq!((m1 + 2.0).arr, [[3.0, 4.0, 5.0]]);
-        assert_eq!((m1 - 2.0).arr, [[-1.0, 0.0, 1.0]]);
-        assert_eq!((m1 * 2.0).arr, [[2.0, 4.0, 6.0]]);
-        assert_eq!((m1 / 2.0).arr, [[0.5, 1.0, 1.5]]);
+        assert_eq!((m1 + 2.0).as_array(), [[3.0, 4.0, 5.0]]);
+        assert_eq!((m1 - 2.0).as_array(), [[-1.0, 0.0, 1.0]]);
+        assert_eq!((m1 * 2.0).as_array(), [[2.0, 4.0, 6.0]]);
+        assert_eq!((m1 / 2.0).as_array(), [[0.5, 1.0, 1.5]]);
 
         m3 += 2.0;
-        assert_eq!(m3.arr, [[3.0, 4.0, 5.0]]);
+        assert_eq!(m3.as_array(), [[3.0, 4.0, 5.0]]);
         m3 -= 2.0;
-        assert_eq!(m3.arr, [[1.0, 2.0, 3.0]]);
+        assert_eq!(m3.as_array(), [[1.0, 2.0, 3.0]]);
         m3 *= 2.0;
-        assert_eq!(m3.arr, [[2.0, 4.0, 6.0]]);
+        assert_eq!(m3.as_array(), [[2.0, 4.0, 6.0]]);
         m3 /= 2.0;
-        assert_eq!(m3.arr, [[1.0, 2.0, 3.0]]);
+        assert_eq!(m3.as_array(), [[1.0, 2.0, 3.0]]);
     }
 }

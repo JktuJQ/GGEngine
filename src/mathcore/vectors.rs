@@ -6,6 +6,7 @@ use crate::mathcore::{
     floats::{equal, FloatOperations},
     Angle,
 };
+use serde::{Deserialize, Serialize};
 use std::{
     fmt::Debug,
     ops::{Add, AddAssign, BitXor, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign},
@@ -267,7 +268,7 @@ macro_rules! impl_vector_operations {
 
 /// [`Vector2`] struct represents two-dimensional vector and two-dimensional point with `f32` coordinates on a plane.
 ///
-#[derive(Copy, Clone, Debug)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug)]
 pub struct Vector2 {
     /// X component of vector.
     ///
@@ -326,7 +327,7 @@ pub type Vertex = Point;
 
 /// [`Vector2Int`] struct represents two-dimensional vector and two-dimensional point with `i32` coordinates on a plane.
 ///
-#[derive(Copy, Clone, Debug)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug)]
 pub struct Vector2Int {
     /// X component of vector.
     ///

@@ -11,6 +11,7 @@
 
 // crates
 extern crate sdl2;
+extern crate serde;
 
 // cores
 pub mod datacore;

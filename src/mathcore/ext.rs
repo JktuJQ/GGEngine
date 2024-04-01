@@ -3,6 +3,7 @@
 //!
 
 use crate::mathcore::floats::{equal, FloatOperations};
+use serde::{Deserialize, Serialize};
 use std::{
     f32::consts::{FRAC_PI_2, FRAC_PI_3, FRAC_PI_4, FRAC_PI_6, TAU},
     ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign},
@@ -21,7 +22,7 @@ use std::{
 /// assert_eq!(1 * (sign as i8), -1);
 /// ```
 ///
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Sign {
     /// Negative sign (-1).
     ///
@@ -127,7 +128,7 @@ impl_sign_from!(f(f32, 0.0), (f64, 0.0),);
 /// assert_eq!(angle.radians(), 3.0 * FRAC_PI_2);
 /// ```
 ///
-#[derive(Copy, Clone, Debug, Default, PartialOrd)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Default, PartialOrd)]
 pub struct Angle(f32);
 impl Angle {
     /// Angle that corresponds to zero.
@@ -382,7 +383,7 @@ impl Eq for Angle {}
 /// assert_eq!(Size::from_value(0.1).get(), 0.1);
 /// ```
 ///
-#[derive(Copy, Clone, Debug, PartialOrd)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialOrd)]
 pub struct Size(f32);
 impl Size {
     /// Normalizes given size to (0.0; +inf).
@@ -488,7 +489,7 @@ impl Eq for Size {}
 /// assert_eq!(Color::BLUE, Color { r: 0, g: 0, b: 255, a: 255 });
 /// ```
 ///
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Color {
     /// Red component of color.
     ///

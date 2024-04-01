@@ -8,6 +8,7 @@ use crate::mathcore::{
     vectors::{Point, Vector2},
     {Angle, Size},
 };
+use serde::{Deserialize, Serialize};
 
 /// Combines given transform matrices by using dot product.
 ///
@@ -32,7 +33,7 @@ use crate::mathcore::{
 ///     [0.0, 1.0, 0.0],
 ///     [0.0, 0.0, 1.0],
 /// ]);
-/// assert_eq!(combine_matrices(vec![matrix1, matrix2, matrix3]).arr,
+/// assert_eq!(combine_matrices(vec![matrix1, matrix2, matrix3]).as_array(),
 /// [
 ///     [1.0, -1.74, 6.0],
 ///     [0.87, 0.5, 2.0],
@@ -49,7 +50,7 @@ pub fn combine_matrices<const N: usize>(matrices: Vec<Matrix<N, N>>) -> Matrix<N
 
 /// [`Transform`] struct-like enum represents 3 basic matrix transformations.
 ///
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Transform {
     /// Translation moves an object along given vector.
     ///
@@ -87,7 +88,7 @@ impl Transform {
     /// # use ggengine::mathcore::vectors::Vector2;
     /// let transform: Transform = Transform::Translation { vector: Vector2::from([2.0, 3.0]) };
     /// let matrix: Matrix3x3 = transform.matrix();
-    /// assert_eq!(matrix.arr,
+    /// assert_eq!(matrix.as_array(),
     ///     [[1.0, 0.0, 2.0],
     ///      [0.0, 1.0, 3.0],
     ///      [0.0, 0.0, 1.0]]
@@ -107,7 +108,7 @@ impl Transform {
     /// # use ggengine::mathcore::Angle;
     /// let transform: Transform = Transform::Rotation { angle: Angle::from_degrees(90.0) };
     /// let matrix: Matrix3x3 = transform.matrix().round_up_to(2);
-    /// assert_eq!(matrix.arr,
+    /// assert_eq!(matrix.as_array(),
     ///     [[0.0, -1.0, 0.0],
     ///      [1.0, 0.0, 0.0],
     ///      [0.0, 0.0, 1.0]]
@@ -127,7 +128,7 @@ impl Transform {
     /// # use ggengine::mathcore::Size;
     /// let transform: Transform = Transform::Scaling { size_scale: (Size::from_value(3.0), Size::from_value(2.0)) };
     /// let matrix: Matrix3x3 = transform.matrix();
-    /// assert_eq!(matrix.arr,
+    /// assert_eq!(matrix.as_array(),
     ///     [[3.0, 0.0, 0.0],
     ///      [0.0, 2.0, 0.0],
     ///      [0.0, 0.0, 1.0]]

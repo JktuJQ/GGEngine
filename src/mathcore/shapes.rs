@@ -8,6 +8,7 @@ use crate::mathcore::{
     vectors::{Point, Vector2, Vertex},
     {Angle, Sign, Size},
 };
+use serde::{Deserialize, Serialize};
 
 /// [`Segment`] struct represents two-dimensional line segment.
 ///
@@ -16,7 +17,7 @@ use crate::mathcore::{
 /// Transform traits that are implemented (`Translatable` and `Rotatable`) supply comments on
 /// what is considered origin and angle of a line segment.
 ///
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Segment {
     /// Array of segment's points.
     ///
@@ -324,7 +325,7 @@ pub trait Convex: PolygonLike {}
 /// );
 /// ```
 ///
-#[derive(Copy, Clone, Debug)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug)]
 pub struct Rect {
     /// Array of rectangle's vertices.
     ///
