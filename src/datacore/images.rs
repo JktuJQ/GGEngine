@@ -16,11 +16,10 @@ use sdl2::{
     rect::Rect as Sdl2Rect,
     surface::Surface as ImageSurface,
 };
-use serde::{de, Deserialize, Deserializer, Serialize};
 use std::{
     fmt,
     io::{Error, ErrorKind},
-    path::{Path, PathBuf},
+    path::Path,
     sync::OnceLock,
 };
 
@@ -28,7 +27,7 @@ use std::{
 ///
 /// Only RGB-based formats are supported, some with alpha channel and some without it.
 ///
-#[derive(Serialize, Deserialize, Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum PixelFormat {
     /// RGB332 color format.
     ///
@@ -284,7 +283,7 @@ impl PixelFormat {
 /// assert_eq!(area.height(), 100);
 /// ```
 ///
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct ImageArea {
     /// Tuple with the lowest x and y coordinates.
     ///
@@ -373,40 +372,30 @@ impl From<((u32, u32), (u32, u32))> for ImageArea {
 /// It supports loading images from disk, saving them, redacting, blitting and many other transformations.
 /// This struct is widely used throughout game engine.
 ///
-#[derive(Serialize)]
 pub struct Image<'a> {
-    /// Name of a loaded image file (`PathBuf` is empty only if image was manually created).
+    /// Name of a loaded image file (`None` only if image was manually created).
     ///
-    filename: PathBuf,
+    filename: Option<&'static Path>,
     /// Underlying `sdl2` surface.
     ///
-    #[serde(skip_serializing)]
     surface: ImageSurface<'a>,
-}
-impl<'a, 'de> Deserialize<'de> for Image<'a> {
-    fn deserialize<D>(deserializer: D) -> Result<Image<'a>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let path_buf: PathBuf = PathBuf::deserialize(deserializer)?;
-        Image::from_file(path_buf.as_path()).map_err(|err| {
-            de::Error::invalid_value(de::Unexpected::Str(&err.to_string()), &"Wrong filename")
-        })
-    }
 }
 impl<'a> Image<'a> {
     // Images are used all over game engine and that's why these functions extend [`Image`] internal API to `crate` visibility.
     // Even though this is considered bad practice, it feels like a necessity at the moment.
     /// Constructs [`Image`] from `sdl2` surface.
     ///
-    pub(crate) fn from_sdl_surface(filename: PathBuf, surface: ImageSurface<'a>) -> Self {
+    pub(crate) fn from_sdl_surface(
+        filename: Option<&'static Path>,
+        surface: ImageSurface<'a>,
+    ) -> Self {
         Self { filename, surface }
     }
 
     /// Returns name of file from which [`Image`] was initialized or `None`, if it was created manually.
     ///
-    pub fn filename(&self) -> &Path {
-        self.filename.as_path()
+    pub fn filename(&self) -> Option<&'static Path> {
+        self.filename
     }
 
     /// Initializes new empty image from given size and format.
@@ -419,7 +408,7 @@ impl<'a> Image<'a> {
     ///
     pub fn new(width: u32, height: u32, format: PixelFormat) -> Self {
         Self {
-            filename: PathBuf::new(),
+            filename: None,
             surface: ImageSurface::new(width, height, format.to_sdl2enum())
                 .expect("All `PixelFormat` variants have valid representations in `sdl2`"),
         }
@@ -435,14 +424,14 @@ impl<'a> Image<'a> {
     /// let image: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct");
     /// ```
     ///
-    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
-        let surface: ImageSurface = ImageSurface::from_file(path.as_ref())
+    pub fn from_file(path: &'static Path) -> Result<Self, Error> {
+        let surface: ImageSurface = ImageSurface::from_file(path)
             .map_err(|message| Error::new(ErrorKind::NotFound, message))?;
         if PixelFormat::from_sdl2enum(surface.pixel_format_enum()).is_none() {
             return Err(Error::new(ErrorKind::InvalidData, "Wrong image format"));
         }
         Ok(Image {
-            filename: path.as_ref().to_path_buf(),
+            filename: Some(path),
             surface,
         })
     }
@@ -458,7 +447,7 @@ impl<'a> Image<'a> {
         format: PixelFormat,
     ) -> Result<Self, Error> {
         Ok(Self {
-            filename: PathBuf::new(),
+            filename: None,
             surface: ImageSurface::from_data(
                 Box::leak::<'a>(buffer),
                 width,
@@ -495,7 +484,7 @@ impl<'a> Image<'a> {
     ///
     pub fn convert(&self, format: PixelFormat) -> Self {
         Image {
-            filename: self.filename.clone(),
+            filename: self.filename,
             surface: self
                 .surface
                 .convert_format(format.to_sdl2enum())
@@ -590,7 +579,7 @@ impl<'a> Image<'a> {
             .blit(Some(area.to_sdl_rect()), &mut result, None)
             .expect("Cropping should be possible.");
         Image {
-            filename: PathBuf::new(),
+            filename: None,
             surface: result,
         }
     }

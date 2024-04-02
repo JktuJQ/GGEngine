@@ -17,17 +17,16 @@ use sdl2::ttf::{
     init as ttf_init, Font as TTFont, FontError as TTFontError, FontStyle as TTFontStyle,
     Hinting as TTFontHinting, PartialRendering as TTFPartialRendering, Sdl2TtfContext,
 };
-use serde::{de, Deserialize, Deserializer, Serialize};
 use std::{
     fmt,
     io::{Error, ErrorKind},
-    path::{Path, PathBuf},
+    path::Path,
     sync::OnceLock,
 };
 
 /// [`FontShowMode`] enum lists possible modes for showing truetype fonts.
 ///
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum FontShowMode {
     /// Allows showing text in a single line with given color.
     ///
@@ -87,7 +86,7 @@ impl FontShowMode {
                 wrap_max_width,
             } => show_object.blended_wrapped(color.to_rgba(), wrap_max_width),
         })
-        .map(|surface| Image::from_sdl_surface(PathBuf::new(), surface))
+        .map(|surface| Image::from_sdl_surface(None, surface))
         .map_err(|error| {
             let message: String = match error {
                 TTFontError::InvalidLatin1Text(_) => String::from("Invalid Latin-1 text"),
@@ -185,36 +184,19 @@ pub struct GlyphMetrics {
 ///     .expect("Conversion should not fail");
 /// ```
 ///
-#[derive(Serialize)]
 pub struct Font {
     /// Name of a loaded font.
     ///
-    filename: PathBuf,
-    /// Point size of font.
-    ///
-    point_size: u16,
+    filename: &'static Path,
     /// Underlying sdl font.
     ///
-    #[serde(skip_serializing)]
     font: TTFont<'static, 'static>,
-}
-impl<'de> Deserialize<'de> for Font {
-    fn deserialize<D>(deserializer: D) -> Result<Font, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let (path_buf, point_size): (PathBuf, u16) =
-            <(PathBuf, u16) as Deserialize>::deserialize(deserializer)?;
-        FontSystem::load_font(path_buf.as_path(), point_size).map_err(|err| {
-            de::Error::invalid_value(de::Unexpected::Str(&err.to_string()), &"Wrong filename")
-        })
-    }
 }
 impl Font {
     /// Returns name of file from which [`Font`] was initialized.
     ///
-    pub fn filename(&self) -> &Path {
-        self.filename.as_path()
+    pub fn filename(&self) -> &'static Path {
+        self.filename
     }
 
     /// Transforms given UTF-8 text using this font and given [`FontShowMode`] into image.
@@ -224,7 +206,7 @@ impl Font {
     /// # use ggengine::datacore::fonts::{Font, FontShowMode, FontSystem};
     /// # use ggengine::mathcore::Color;
     /// # use std::path::Path;
-    /// # FontSystem::init();
+    /// FontSystem::init();
     /// let font: Font = FontSystem::load_font(Path::new("font.ttf"), 14)
     ///     .expect("Filename should be correct");
     /// font.show_text(FontShowMode::Solid { color: Color::BLACK }, "ggengine")
@@ -241,7 +223,7 @@ impl Font {
     /// # use ggengine::datacore::fonts::{Font, FontShowMode, FontSystem};
     /// # use ggengine::mathcore::Color;
     /// # use std::path::Path;
-    /// # FontSystem::init();
+    /// FontSystem::init();
     /// let font: Font = FontSystem::load_font(Path::new("font.ttf"), 14)
     ///     .expect("Filename should be correct");
     /// font.show_character(FontShowMode::Solid { color: Color::BLACK }, 'a')
@@ -258,7 +240,7 @@ impl Font {
     /// # use ggengine::datacore::fonts::{Font, FontShowMode, FontSystem};
     /// # use ggengine::mathcore::Color;
     /// # use std::path::Path;
-    /// # FontSystem::init();
+    /// FontSystem::init();
     /// let font: Font = FontSystem::load_font(Path::new("font.ttf"), 14)
     ///     .expect("Filename should be correct");
     /// font.show_latin1_text(FontShowMode::Solid { color: Color::BLACK },
@@ -326,11 +308,6 @@ impl Font {
     ///
     pub fn descent(&self) -> u32 {
         self.font.descent().unsigned_abs()
-    }
-    /// Returns this font's size in points.
-    ///
-    pub fn point_size(&self) -> u16 {
-        self.point_size
     }
 
     /// Returns the number of faces in this font.
@@ -418,6 +395,7 @@ static TTF_CONTEXT: OnceLock<Sdl2TtfContext> = OnceLock::new();
 ///
 #[derive(Copy, Clone, Debug)]
 pub enum FontSystem {}
+
 impl FontSystem {
     /// Initializes truetype font system, prepares libraries for use and allows different formats to be opened.
     ///
@@ -441,10 +419,9 @@ impl FontSystem {
     ///     .expect("Filename should be correct");
     /// ```
     ///
-    pub fn load_font(path: impl AsRef<Path>, point_size: u16) -> Result<Font, Error> {
+    pub fn load_font(path: &'static Path, point_size: u16) -> Result<Font, Error> {
         Ok(Font {
-            filename: path.as_ref().to_path_buf(),
-            point_size,
+            filename: path,
             font: TTF_CONTEXT
                 .get()
                 .expect("`FontSystem::init` should be called before using anything else from `ggengine::datacore::fonts` submodule")
@@ -463,13 +440,12 @@ impl FontSystem {
     /// ```
     ///
     pub fn load_font_at_index(
-        path: impl AsRef<Path>,
+        path: &'static Path,
         point_size: u16,
         index: u32,
     ) -> Result<Font, Error> {
         Ok(Font {
-            filename: path.as_ref().to_path_buf(),
-            point_size,
+            filename: path,
             font: TTF_CONTEXT
                 .get()
                 .expect("`FontSystem::init` should be called before using anything else from `ggengine::datacore::fonts` submodule")

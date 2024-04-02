@@ -22,18 +22,17 @@ use sdl2::mixer::{
     AUDIO_U16LSB as MixerAUDIO_U16LSB, AUDIO_U16MSB as MixerAUDIO_U16MSB,
     DEFAULT_FREQUENCY as MixerDEFAULT_FREQUENCY, MAX_VOLUME as MixerMAX_VOLUME,
 };
-use serde::{de, Deserialize, Deserializer, Serialize};
 use std::{
     fmt,
     io::{Error, ErrorKind},
     num::TryFromIntError,
-    path::{Path, PathBuf},
+    path::Path,
     sync::OnceLock,
 };
 
 /// [`Volume`] is a newtype that restricts volume values to [0; 128].
 ///
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct Volume(u8);
 impl Volume {
     /// Minimal volume (silence).
@@ -66,32 +65,19 @@ pub use sdl2::audio::AudioFormatNum as SoundFormat;
 /// Samples (chunks) are meant to be a file completely decoded into memory up front and then be played repeatedly.
 /// They might take more memory when initializing, but once they are loaded won't need to decode again.
 ///
-#[derive(Serialize)]
 pub struct Sound {
-    /// Name of a loaded sound file (`PathBuf` is empty only if the sound was manually created from raw buffer).
+    /// Name of a loaded sound file (`None` only if sound was manually created from raw buffer).
     ///
-    filename: PathBuf,
+    filename: Option<&'static Path>,
     /// Underlying `sdl2` chunk.
     ///
-    #[serde(skip_serializing)]
     chunk: MixerChunk,
 }
-impl<'de> Deserialize<'de> for Sound {
-    fn deserialize<D>(deserializer: D) -> Result<Sound, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let path_buf: PathBuf = PathBuf::deserialize(deserializer)?;
-        Sound::from_file(path_buf.as_path()).map_err(|err| {
-            de::Error::invalid_value(de::Unexpected::Str(&err.to_string()), &"Wrong filename")
-        })
-    }
-}
 impl Sound {
-    /// Returns name of file from which [`Sound`] was initialized or empty `Path`, if it was created from raw buffer.
+    /// Returns name of file from which [`Sound`] was initialized or `None`, if it was created from raw buffer.
     ///
-    pub fn filename(&self) -> &Path {
-        self.filename.as_path()
+    pub fn filename(&self) -> Option<&'static Path> {
+        self.filename
     }
 
     /// Initializes [`Sound`] from given file.
@@ -103,9 +89,9 @@ impl Sound {
     /// let sound: Sound = Sound::from_file(Path::new("s.wav")).expect("Filename should be correct");
     /// ```
     ///
-    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
+    pub fn from_file(path: &'static Path) -> Result<Self, Error> {
         Ok(Sound {
-            filename: path.as_ref().to_path_buf(),
+            filename: Some(path),
             chunk: MixerChunk::from_file(path)
                 .map_err(|message| Error::new(ErrorKind::NotFound, message))?,
         })
@@ -116,7 +102,7 @@ impl Sound {
     ///
     pub fn from_raw_buffer(buffer: Box<[impl SoundFormat]>) -> Result<Self, Error> {
         Ok(Sound {
-            filename: PathBuf::new(),
+            filename: None,
             chunk: MixerChunk::from_raw_buffer(buffer)
                 .map_err(|message| Error::new(ErrorKind::InvalidData, message))?,
         })
@@ -146,32 +132,19 @@ impl fmt::Debug for Sound {
 /// Music is meant to be a compressed file which is fairly big and thus gets decoded on fly while being played as a background music.
 /// Due to absence of predecoding, music does not require as much memory at initialization.
 ///
-#[derive(Serialize)]
 pub struct Music {
-    /// Name of a loaded music file (`PathBuf` is empty only if the sound was manually created from raw buffer).
+    /// Name of a loaded music file (`None` only if sound was manually created from raw buffer).
     ///
-    filename: PathBuf,
+    filename: Option<&'static Path>,
     /// Underlying sdl music.
     ///
-    #[serde(skip_serializing)]
     music: MixerMusic<'static>,
 }
-impl<'de> Deserialize<'de> for Music {
-    fn deserialize<D>(deserializer: D) -> Result<Music, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let path_buf: PathBuf = PathBuf::deserialize(deserializer)?;
-        Music::from_file(path_buf.as_path()).map_err(|err| {
-            de::Error::invalid_value(de::Unexpected::Str(&err.to_string()), &"Wrong filename")
-        })
-    }
-}
 impl Music {
-    /// Returns name of file from which [`Music`] was initialized or empty `Path`, if it was created from raw buffer.
+    /// Returns name of file from which [`Music`] was initialized or `None`, if it was created from raw buffer.
     ///
-    pub fn filename(&self) -> &Path {
-        self.filename.as_path()
+    pub fn filename(&self) -> Option<&'static Path> {
+        self.filename
     }
 
     /// Initializes [`Music`] from given file.
@@ -183,9 +156,9 @@ impl Music {
     /// let sound: Music = Music::from_file(Path::new("m.mp3")).expect("Filename should be correct");
     /// ```
     ///
-    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
+    pub fn from_file(path: &'static Path) -> Result<Self, Error> {
         Ok(Music {
-            filename: path.as_ref().to_path_buf(),
+            filename: Some(path),
             music: MixerMusic::from_file(path)
                 .map_err(|message| Error::new(ErrorKind::NotFound, message))?,
         })
@@ -196,7 +169,7 @@ impl Music {
     ///
     pub fn from_raw_buffer(buffer: Box<[u8]>) -> Result<Self, Error> {
         Ok(Music {
-            filename: PathBuf::new(),
+            filename: None,
             music: MixerMusic::from_static_bytes(Box::leak::<'static>(buffer))
                 .map_err(|message| Error::new(ErrorKind::InvalidData, message))?,
         })
