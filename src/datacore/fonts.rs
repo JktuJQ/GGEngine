@@ -9,14 +9,18 @@
 //!
 
 use crate::{
-    datacore::images::Image,
-    mathcore::{vectors::Vector2Int, Color},
+    datacore::{
+        assets::{FromFile, ToFile},
+        images::Image,
+    },
+    mathcore::{vectors::PointInt, Color},
 };
 use bitflags::bitflags;
 use sdl2::ttf::{
     init as ttf_init, Font as TTFont, FontError as TTFontError, FontStyle as TTFontStyle,
     Hinting as TTFontHinting, PartialRendering as TTFPartialRendering, Sdl2TtfContext,
 };
+use std::path::PathBuf;
 use std::{
     fmt,
     io::{Error, ErrorKind},
@@ -86,7 +90,7 @@ impl FontShowMode {
                 wrap_max_width,
             } => show_object.blended_wrapped(color.to_rgba(), wrap_max_width),
         })
-        .map(|surface| Image::from_sdl_surface(None, surface))
+        .map(|surface| Image::from_sdl_surface(PathBuf::new(), surface))
         .map_err(|error| {
             let message: String = match error {
                 TTFontError::InvalidLatin1Text(_) => String::from("Invalid Latin-1 text"),
@@ -162,53 +166,132 @@ impl FontHinting {
 pub struct GlyphMetrics {
     /// Minimal coordinate of glyph.
     ///
-    pub min: Vector2Int,
+    pub min: PointInt,
     /// Maximal coordinate of glyph.
     ///
-    pub max: Vector2Int,
+    pub max: PointInt,
     /// Advance of a glyph.
     ///
     pub advance: i32,
+}
+
+/// [`PartialFont`] struct is an intermediate state of a truetype font.
+///
+/// It allows loading the same font with different sizes.
+///
+pub struct PartialFont {
+    /// Name of a loaded font.
+    ///
+    filename: PathBuf,
+}
+impl PartialFont {
+    /// Returns name of file from which [`PartialFont`] was initialized.
+    ///
+    pub fn filename(&self) -> &Path {
+        &self.filename
+    }
+
+    /// Loads truetype font from file with given size in points.
+    ///
+    /// # Examples
+    /// ```rust, no_run
+    /// # use ggengine::datacore::fonts::PartialFont;
+    /// # use ggengine::datacore::fonts::FontSystem;
+    /// # use ggengine::datacore::assets::FromFile;
+    /// # use std::path::Path;
+    /// FontSystem::init();
+    /// let partial_font = PartialFont::from_file(Path::new("font.ttf"))
+    ///     .expect("Filename should be correct");
+    /// let font = partial_font.with_size(14).expect("FontSystem::init was called");
+    /// ```
+    ///
+    pub fn with_size(&self, point_size: u16) -> Result<Font, Error> {
+        Ok(Font {
+            font: TTF_CONTEXT
+                .get()
+                .expect("`FontSystem::init` should be called before using anything else from `ggengine::datacore::fonts` submodule")
+                .load_font(&self.filename, point_size).map_err(|message| Error::new(ErrorKind::NotFound, message))?,
+        })
+    }
+
+    /// Loads truetype font from file at exact index in file with given size in points.
+    ///
+    /// # Examples
+    /// ```rust, no_run
+    /// # use ggengine::datacore::fonts::PartialFont;
+    /// # use ggengine::datacore::fonts::FontSystem;
+    /// # use ggengine::datacore::assets::FromFile;
+    /// # use std::path::Path;
+    /// FontSystem::init();
+    /// let partial_font = PartialFont::from_file(Path::new("font.ttf"))
+    ///     .expect("Filename should be correct");
+    /// let font = partial_font.with_size_at_index(14, 0).expect("FontSystem::init was called");
+    /// ```
+    ///
+    pub fn with_size_at_index(&self, point_size: u16, index: u32) -> Result<Font, Error> {
+        Ok(Font {
+            font: TTF_CONTEXT
+                .get()
+                .expect("`FontSystem::init` should be called before using anything else from `ggengine::datacore::fonts` submodule")
+                .load_font_at_index(&self.filename, index, point_size).map_err(|message| Error::new(ErrorKind::NotFound, message))?,
+        })
+    }
+}
+impl FromFile for PartialFont {
+    /// Partially initializes font from file.
+    ///
+    fn from_file(filename: impl AsRef<Path>) -> Result<Self, Error> {
+        Ok(Self {
+            filename: filename.as_ref().to_path_buf(),
+        })
+    }
+}
+impl ToFile for PartialFont {
+    /// This is a no-op since all fonts are stored externally.
+    ///
+    fn to_file(&self, _filename: impl AsRef<Path>) -> Result<(), Error> {
+        Ok(())
+    }
+}
+impl fmt::Debug for PartialFont {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PartialFont")
+            .field("filename", &self.filename)
+            .finish()
+    }
 }
 /// [`Font`] struct handles loaded font data.
 ///
 /// # Examples
 /// ```rust, no_run
-/// # use ggengine::datacore::fonts::{Font, FontShowMode, FontSystem};
+/// # use ggengine::datacore::fonts::{Font, FontShowMode, FontSystem, PartialFont};
+/// # use ggengine::datacore::assets::FromFile;
 /// # use ggengine::mathcore::Color;
 /// # use std::path::Path;
 /// FontSystem::init();
-/// let font: Font = FontSystem::load_font(Path::new("font.ttf"), 14)
-///     .expect("Filename should be correct");
+/// let font: Font = PartialFont::from_file(Path::new("font.ttf")).expect("Filename should be correct")
+///     .with_size(14).expect("FontSystem::init was called");
 /// font.show_text(FontShowMode::Solid { color: Color::BLACK }, "ggengine")
 ///     .expect("Conversion should not fail");
 /// ```
 ///
 pub struct Font {
-    /// Name of a loaded font.
-    ///
-    filename: &'static Path,
     /// Underlying sdl font.
     ///
     font: TTFont<'static, 'static>,
 }
 impl Font {
-    /// Returns name of file from which [`Font`] was initialized.
-    ///
-    pub fn filename(&self) -> &'static Path {
-        self.filename
-    }
-
     /// Transforms given UTF-8 text using this font and given [`FontShowMode`] into image.
     ///
     /// # Examples
     /// ```rust, no_run
-    /// # use ggengine::datacore::fonts::{Font, FontShowMode, FontSystem};
+    /// # use ggengine::datacore::fonts::{Font, FontShowMode, FontSystem, PartialFont};
+    /// # use ggengine::datacore::assets::FromFile;
     /// # use ggengine::mathcore::Color;
     /// # use std::path::Path;
     /// FontSystem::init();
-    /// let font: Font = FontSystem::load_font(Path::new("font.ttf"), 14)
-    ///     .expect("Filename should be correct");
+    /// let font: Font = PartialFont::from_file(Path::new("font.ttf")).expect("Filename should be correct")
+    ///     .with_size(14).expect("FontSystem::init was called");
     /// font.show_text(FontShowMode::Solid { color: Color::BLACK }, "ggengine")
     ///     .expect("Conversion should not fail");
     /// ```
@@ -220,12 +303,13 @@ impl Font {
     ///
     /// # Examples
     /// ```rust, no_run
-    /// # use ggengine::datacore::fonts::{Font, FontShowMode, FontSystem};
+    /// # use ggengine::datacore::fonts::{Font, FontShowMode, FontSystem, PartialFont};
+    /// # use ggengine::datacore::assets::FromFile;
     /// # use ggengine::mathcore::Color;
     /// # use std::path::Path;
     /// FontSystem::init();
-    /// let font: Font = FontSystem::load_font(Path::new("font.ttf"), 14)
-    ///     .expect("Filename should be correct");
+    /// let font: Font = PartialFont::from_file(Path::new("font.ttf")).expect("Filename should be correct")
+    ///     .with_size(14).expect("FontSystem::init was called");
     /// font.show_character(FontShowMode::Solid { color: Color::BLACK }, 'a')
     ///     .expect("Conversion should not fail");
     /// ```
@@ -237,12 +321,13 @@ impl Font {
     ///
     /// # Examples
     /// ```rust, no_run
-    /// # use ggengine::datacore::fonts::{Font, FontShowMode, FontSystem};
+    /// # use ggengine::datacore::fonts::{Font, FontShowMode, FontSystem, PartialFont};
+    /// # use ggengine::datacore::assets::FromFile;
     /// # use ggengine::mathcore::Color;
     /// # use std::path::Path;
     /// FontSystem::init();
-    /// let font: Font = FontSystem::load_font(Path::new("font.ttf"), 14)
-    ///     .expect("Filename should be correct");
+    /// let font: Font = PartialFont::from_file(Path::new("font.ttf")).expect("Filename should be correct")
+    ///     .with_size(14).expect("FontSystem::init was called");
     /// font.show_latin1_text(FontShowMode::Solid { color: Color::BLACK },
     ///     &[0xC4, 0x70, 0x70, 0x6C, 0x65]
     /// ).expect("Conversion should not fail");
@@ -263,8 +348,8 @@ impl Font {
         self.font
             .find_glyph_metrics(character)
             .map(|sdl_metrics| GlyphMetrics {
-                min: Vector2Int::from([sdl_metrics.minx, sdl_metrics.miny]),
-                max: Vector2Int::from([sdl_metrics.maxx, sdl_metrics.maxy]),
+                min: PointInt::from([sdl_metrics.minx, sdl_metrics.miny]),
+                max: PointInt::from([sdl_metrics.maxx, sdl_metrics.maxy]),
                 advance: sdl_metrics.advance,
             })
     }
@@ -381,7 +466,8 @@ impl Font {
 impl fmt::Debug for Font {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Font")
-            .field("filename", &self.filename)
+            .field("family_name", &self.font.face_family_name())
+            .field("style_name", &self.font.face_style_name())
             .finish()
     }
 }
@@ -395,7 +481,6 @@ static TTF_CONTEXT: OnceLock<Sdl2TtfContext> = OnceLock::new();
 ///
 #[derive(Copy, Clone, Debug)]
 pub enum FontSystem {}
-
 impl FontSystem {
     /// Initializes truetype font system, prepares libraries for use and allows different formats to be opened.
     ///
@@ -406,50 +491,5 @@ impl FontSystem {
             return;
         }
         let _ = TTF_CONTEXT.set(ttf_init().expect("Font driver should be available"));
-    }
-
-    /// Loads truetype font from path with given size in points.
-    ///
-    /// # Examples
-    /// ```rust, no_run
-    /// # use ggengine::datacore::fonts::FontSystem;
-    /// # use std::path::Path;
-    /// FontSystem::init();
-    /// let font = FontSystem::load_font(Path::new("font.ttf"), 14)
-    ///     .expect("Filename should be correct");
-    /// ```
-    ///
-    pub fn load_font(path: &'static Path, point_size: u16) -> Result<Font, Error> {
-        Ok(Font {
-            filename: path,
-            font: TTF_CONTEXT
-                .get()
-                .expect("`FontSystem::init` should be called before using anything else from `ggengine::datacore::fonts` submodule")
-                .load_font(path, point_size).map_err(|message| Error::new(ErrorKind::NotFound, message))?,
-        })
-    }
-    /// Loads truetype font from path at exact index in file with given size in points.
-    ///
-    /// # Examples
-    /// ```rust, no_run
-    /// # use ggengine::datacore::fonts::FontSystem;
-    /// # use std::path::Path;
-    /// FontSystem::init();
-    /// let font = FontSystem::load_font_at_index(Path::new("font.ttf"), 14, 10)
-    ///     .expect("Filename should be correct");
-    /// ```
-    ///
-    pub fn load_font_at_index(
-        path: &'static Path,
-        point_size: u16,
-        index: u32,
-    ) -> Result<Font, Error> {
-        Ok(Font {
-            filename: path,
-            font: TTF_CONTEXT
-                .get()
-                .expect("`FontSystem::init` should be called before using anything else from `ggengine::datacore::fonts` submodule")
-                .load_font_at_index(path, index, point_size).map_err(|message| Error::new(ErrorKind::NotFound, message))?,
-        })
     }
 }

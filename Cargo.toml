@@ -28,3 +28,5 @@ version = "1.*"
 features = ["derive"]
 [dependencies.serde-big-array]
 version = "0.5.*"
+[dependencies.serde_cbor]
+version = "0.11.*"

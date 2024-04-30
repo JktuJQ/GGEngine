@@ -10,7 +10,10 @@
 //! To further understand relations between those structs, traits, enums and constants, it is encouraged to read docs for submodule items.
 //!
 
-use crate::mathcore::Angle;
+use crate::{
+    datacore::assets::{FromFile, ToFile},
+    mathcore::Angle,
+};
 use bitflags::bitflags;
 use sdl2::mixer::{
     allocate_channels as mixer_allocate_channels, init as mixer_init,
@@ -26,7 +29,7 @@ use std::{
     fmt,
     io::{Error, ErrorKind},
     num::TryFromIntError,
-    path::Path,
+    path::{Path, PathBuf},
     sync::OnceLock,
 };
 
@@ -66,43 +69,27 @@ pub use sdl2::audio::AudioFormatNum as SoundFormat;
 /// They might take more memory when initializing, but once they are loaded won't need to decode again.
 ///
 pub struct Sound {
-    /// Name of a loaded sound file (`None` only if sound was manually created from raw buffer).
+    /// Name of a loaded sound file (`PathBuf` is empty only if sound was manually created from raw buffer).
     ///
-    filename: Option<&'static Path>,
+    filename: PathBuf,
     /// Underlying `sdl2` chunk.
     ///
     chunk: MixerChunk,
 }
 impl Sound {
-    /// Returns name of file from which [`Sound`] was initialized or `None`, if it was created from raw buffer.
+    /// Returns name of file from which [`Sound`] was initialized or empty `Path`, if it was created from raw buffer.
     ///
-    pub fn filename(&self) -> Option<&'static Path> {
-        self.filename
+    pub fn filename(&self) -> &Path {
+        self.filename.as_path()
     }
 
-    /// Initializes [`Sound`] from given file.
-    ///
-    /// # Example
-    /// ```rust, no_run
-    /// # use ggengine::datacore::audio::Sound;
-    /// # use std::path::Path;
-    /// let sound: Sound = Sound::from_file(Path::new("s.wav")).expect("Filename should be correct");
-    /// ```
-    ///
-    pub fn from_file(path: &'static Path) -> Result<Self, Error> {
-        Ok(Sound {
-            filename: Some(path),
-            chunk: MixerChunk::from_file(path)
-                .map_err(|message| Error::new(ErrorKind::NotFound, message))?,
-        })
-    }
     /// Initializes [`Sound`] from given buffer in specific format.
     ///
     /// No additional conversions will be made.
     ///
     pub fn from_raw_buffer(buffer: Box<[impl SoundFormat]>) -> Result<Self, Error> {
         Ok(Sound {
-            filename: None,
+            filename: PathBuf::new(),
             chunk: MixerChunk::from_raw_buffer(buffer)
                 .map_err(|message| Error::new(ErrorKind::InvalidData, message))?,
         })
@@ -117,6 +104,32 @@ impl Sound {
     ///
     pub fn get_volume(&self) -> Volume {
         Volume(self.chunk.get_volume() as u8)
+    }
+}
+impl FromFile for Sound {
+    /// Initializes [`Sound`] from given file.
+    ///
+    /// # Example
+    /// ```rust, no_run
+    /// # use ggengine::datacore::audio::Sound;
+    /// # use ggengine::datacore::assets::FromFile;
+    /// # use std::path::Path;
+    /// let sound: Sound = Sound::from_file(Path::new("s.wav")).expect("Filename should be correct");
+    /// ```
+    ///
+    fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
+        Ok(Sound {
+            filename: path.as_ref().to_path_buf(),
+            chunk: MixerChunk::from_file(path)
+                .map_err(|message| Error::new(ErrorKind::NotFound, message))?,
+        })
+    }
+}
+impl ToFile for Sound {
+    /// This is a no-op since all sounds are stored externally.
+    ///
+    fn to_file(&self, _filename: impl AsRef<Path>) -> Result<(), Error> {
+        Ok(())
     }
 }
 impl fmt::Debug for Sound {
@@ -135,41 +148,25 @@ impl fmt::Debug for Sound {
 pub struct Music {
     /// Name of a loaded music file (`None` only if sound was manually created from raw buffer).
     ///
-    filename: Option<&'static Path>,
+    filename: PathBuf,
     /// Underlying sdl music.
     ///
     music: MixerMusic<'static>,
 }
 impl Music {
-    /// Returns name of file from which [`Music`] was initialized or `None`, if it was created from raw buffer.
+    /// Returns name of file from which [`Music`] was initialized or empty `Path`, if it was created from raw buffer.
     ///
-    pub fn filename(&self) -> Option<&'static Path> {
-        self.filename
+    pub fn filename(&self) -> &Path {
+        self.filename.as_path()
     }
 
-    /// Initializes [`Music`] from given file.
-    ///
-    /// # Example
-    /// ```rust, no_run
-    /// # use ggengine::datacore::audio::Music;
-    /// # use std::path::Path;
-    /// let sound: Music = Music::from_file(Path::new("m.mp3")).expect("Filename should be correct");
-    /// ```
-    ///
-    pub fn from_file(path: &'static Path) -> Result<Self, Error> {
-        Ok(Music {
-            filename: Some(path),
-            music: MixerMusic::from_file(path)
-                .map_err(|message| Error::new(ErrorKind::NotFound, message))?,
-        })
-    }
     /// Initializes [`Music`] from given buffer which will be leaked to acquire static reference.
     ///
     /// This function attempts to guess the file format from incoming data.
     ///
     pub fn from_raw_buffer(buffer: Box<[u8]>) -> Result<Self, Error> {
         Ok(Music {
-            filename: None,
+            filename: PathBuf::new(),
             music: MixerMusic::from_static_bytes(Box::leak::<'static>(buffer))
                 .map_err(|message| Error::new(ErrorKind::InvalidData, message))?,
         })
@@ -184,6 +181,32 @@ impl Music {
     ///
     pub fn get_volume(&self) -> Volume {
         Volume(MixerMusic::get_volume() as u8)
+    }
+}
+impl FromFile for Music {
+    /// Initializes [`Music`] from given file.
+    ///
+    /// # Example
+    /// ```rust, no_run
+    /// # use ggengine::datacore::audio::Music;
+    /// # use ggengine::datacore::assets::FromFile;
+    /// # use std::path::Path;
+    /// let sound: Music = Music::from_file(Path::new("m.mp3")).expect("Filename should be correct");
+    /// ```
+    ///
+    fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
+        Ok(Music {
+            filename: path.as_ref().to_path_buf(),
+            music: MixerMusic::from_file(path)
+                .map_err(|message| Error::new(ErrorKind::NotFound, message))?,
+        })
+    }
+}
+impl ToFile for Music {
+    /// This is a no-op since all sounds are stored externally.
+    ///
+    fn to_file(&self, _filename: impl AsRef<Path>) -> Result<(), Error> {
+        Ok(())
     }
 }
 impl fmt::Debug for Music {

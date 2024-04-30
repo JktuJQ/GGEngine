@@ -10,8 +10,13 @@
 #![warn(variant_size_differences, unreachable_pub)]
 
 // crates
+extern crate bitflags;
+
 extern crate sdl2;
+
 extern crate serde;
+extern crate serde_big_array;
+extern crate serde_cbor;
 
 // cores
 pub mod datacore;

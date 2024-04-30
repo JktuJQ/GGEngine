@@ -1,4 +1,4 @@
-//! `datacore::image` submodule supplies instruments that help in work with image data.
+//! `datacore::images` submodule supplies instruments that help in work with image data.
 //!
 //! This submodule provides structs and enums which represent color and image data,
 //! [`PixelFormat`] lists possible pixel formats and [`Image`] encapsulates work with images.
@@ -6,6 +6,7 @@
 //! To further understand relations between those structs, traits, enums and constants, it is encouraged to read docs for submodule items.
 //!
 
+use crate::datacore::assets::{FromFile, ToFile};
 use bitflags::bitflags;
 use sdl2::{
     image::{
@@ -19,7 +20,7 @@ use sdl2::{
 use std::{
     fmt,
     io::{Error, ErrorKind},
-    path::Path,
+    path::{Path, PathBuf},
     sync::OnceLock,
 };
 
@@ -373,9 +374,9 @@ impl From<((u32, u32), (u32, u32))> for ImageArea {
 /// This struct is widely used throughout game engine.
 ///
 pub struct Image<'a> {
-    /// Name of a loaded image file (`None` only if image was manually created).
+    /// Name of a loaded image file (`PathBuf` is empty only if image was manually created).
     ///
-    filename: Option<&'static Path>,
+    filename: PathBuf,
     /// Underlying `sdl2` surface.
     ///
     surface: ImageSurface<'a>,
@@ -385,17 +386,14 @@ impl<'a> Image<'a> {
     // Even though this is considered bad practice, it feels like a necessity at the moment.
     /// Constructs [`Image`] from `sdl2` surface.
     ///
-    pub(crate) fn from_sdl_surface(
-        filename: Option<&'static Path>,
-        surface: ImageSurface<'a>,
-    ) -> Self {
+    pub(crate) fn from_sdl_surface(filename: PathBuf, surface: ImageSurface<'a>) -> Self {
         Self { filename, surface }
     }
 
-    /// Returns name of file from which [`Image`] was initialized or `None`, if it was created manually.
+    /// Returns name of file from which [`Image`] was initialized or empty `Path`, if it was created manually.
     ///
-    pub fn filename(&self) -> Option<&'static Path> {
-        self.filename
+    pub fn filename(&self) -> &Path {
+        self.filename.as_path()
     }
 
     /// Initializes new empty image from given size and format.
@@ -408,34 +406,12 @@ impl<'a> Image<'a> {
     ///
     pub fn new(width: u32, height: u32, format: PixelFormat) -> Self {
         Self {
-            filename: None,
+            filename: PathBuf::new(),
             surface: ImageSurface::new(width, height, format.to_sdl2enum())
                 .expect("All `PixelFormat` variants have valid representations in `sdl2`"),
         }
     }
-    /// Initializes [`Image`] from given file.
-    ///
-    /// Only RGB-based formats are supported.
-    ///
-    /// # Example
-    /// ```rust, no_run
-    /// # use ggengine::datacore::images::Image;
-    /// # use std::path::Path;
-    /// let image: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct");
-    /// ```
-    ///
-    pub fn from_file(path: &'static Path) -> Result<Self, Error> {
-        let surface: ImageSurface = ImageSurface::from_file(path)
-            .map_err(|message| Error::new(ErrorKind::NotFound, message))?;
-        if PixelFormat::from_sdl2enum(surface.pixel_format_enum()).is_none() {
-            return Err(Error::new(ErrorKind::InvalidData, "Wrong image format"));
-        }
-        Ok(Image {
-            filename: Some(path),
-            surface,
-        })
-    }
-    /// Initializes [`Image`] in given format from buffer.
+    /// Initializes [`Image`] in given format from buffer which will be leaked to acquire static reference.
     ///
     /// No additional conversions will be made.
     ///
@@ -447,7 +423,7 @@ impl<'a> Image<'a> {
         format: PixelFormat,
     ) -> Result<Self, Error> {
         Ok(Self {
-            filename: None,
+            filename: PathBuf::new(),
             surface: ImageSurface::from_data(
                 Box::leak::<'a>(buffer),
                 width,
@@ -457,21 +433,6 @@ impl<'a> Image<'a> {
             )
             .map_err(|message| Error::new(ErrorKind::InvalidData, message))?,
         })
-    }
-
-    /// Saves image to .png file.
-    ///
-    /// # Example
-    /// ```rust, no_run
-    /// # use ggengine::datacore::images::{Image, PixelFormat};
-    /// let image: Image = Image::new(100, 100, PixelFormat::RGBA32);
-    /// image.save("i.png").expect("Filename should be correct");
-    /// ```
-    ///
-    pub fn save(&self, dst: impl AsRef<Path>) -> Result<(), Error> {
-        self.surface
-            .save(dst)
-            .map_err(|message| Error::new(ErrorKind::InvalidData, message))
     }
     /// Copies the surface into a new one of a specified pixel format.
     ///
@@ -484,7 +445,7 @@ impl<'a> Image<'a> {
     ///
     pub fn convert(&self, format: PixelFormat) -> Self {
         Image {
-            filename: self.filename,
+            filename: self.filename.clone(),
             surface: self
                 .surface
                 .convert_format(format.to_sdl2enum())
@@ -510,6 +471,7 @@ impl<'a> Image<'a> {
     /// # Example
     /// ```rust, no_run
     /// # use ggengine::datacore::images::Image;
+    /// # use ggengine::datacore::assets::FromFile;
     /// # use std::path::Path;
     /// let image: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct");
     /// let (x, y): (u32, u32) = (100, 200);  // Accesses (100, 200) pixel
@@ -539,6 +501,7 @@ impl<'a> Image<'a> {
     /// # Example
     /// ```rust, no_run
     /// # use ggengine::datacore::images::Image;
+    /// # use ggengine::datacore::assets::FromFile;
     /// # use std::path::Path;
     /// let mut image: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct");
     /// let (x, y): (u32, u32) = (100, 200);  // Accesses (100, 200) pixel
@@ -567,6 +530,7 @@ impl<'a> Image<'a> {
     /// # Example
     /// ```rust, no_run
     /// # use ggengine::datacore::images::{ImageArea, Image};
+    /// # use ggengine::datacore::assets::FromFile;
     /// # use std::path::Path;
     /// let image1: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct");
     /// let image2: Image = image1.crop(ImageArea::from(((50, 50), (100, 100))));
@@ -579,7 +543,7 @@ impl<'a> Image<'a> {
             .blit(Some(area.to_sdl_rect()), &mut result, None)
             .expect("Cropping should be possible.");
         Image {
-            filename: None,
+            filename: PathBuf::new(),
             surface: result,
         }
     }
@@ -592,6 +556,7 @@ impl<'a> Image<'a> {
     /// # Example
     /// ```rust, no_run
     /// # use ggengine::datacore::images::{ImageArea, Image, PixelFormat};
+    /// # use ggengine::datacore::assets::FromFile;
     /// # use std::path::Path;
     /// let source: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct");
     /// let mut destination: Image = Image::new(100, 100, PixelFormat::RGBA32);
@@ -624,6 +589,7 @@ impl<'a> Image<'a> {
     /// # Example
     /// ```rust, no_run
     /// # use ggengine::datacore::images::{ImageArea, Image, PixelFormat};
+    /// # use ggengine::datacore::assets::FromFile;
     /// # use std::path::Path;
     /// let source: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct");
     /// let mut destination: Image = Image::new(100, 100, PixelFormat::RGBA32);
@@ -673,6 +639,48 @@ impl<'a> Image<'a> {
         PixelFormat::from_sdl2enum(self.surface.pixel_format_enum())
     }
 }
+impl<'a> FromFile for Image<'a> {
+    /// Initializes [`Image`] from given file.
+    ///
+    /// Only RGB-based formats are supported.
+    ///
+    /// # Example
+    /// ```rust, no_run
+    /// # use ggengine::datacore::images::Image;
+    /// # use ggengine::datacore::assets::FromFile;
+    /// # use std::path::Path;
+    /// let image: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct");
+    /// ```
+    ///
+    fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
+        let surface: ImageSurface = ImageSurface::from_file(path.as_ref())
+            .map_err(|message| Error::new(ErrorKind::NotFound, message))?;
+        if PixelFormat::from_sdl2enum(surface.pixel_format_enum()).is_none() {
+            return Err(Error::new(ErrorKind::InvalidData, "Wrong image format"));
+        }
+        Ok(Image {
+            filename: path.as_ref().to_path_buf(),
+            surface,
+        })
+    }
+}
+impl<'a> ToFile for Image<'a> {
+    /// Saves image to '*.png' file.
+    ///
+    /// # Example
+    /// ```rust, no_run
+    /// # use ggengine::datacore::images::{Image, PixelFormat};
+    /// # use ggengine::datacore::assets::ToFile;
+    /// let image: Image = Image::new(100, 100, PixelFormat::RGBA32);
+    /// image.to_file("i.png").expect("Filename should be correct");
+    /// ```
+    ///
+    fn to_file(&self, filename: impl AsRef<Path>) -> Result<(), Error> {
+        self.surface
+            .save(filename)
+            .map_err(|message| Error::new(ErrorKind::InvalidData, message))
+    }
+}
 impl<'a> fmt::Debug for Image<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Image")
@@ -703,7 +711,6 @@ bitflags!(
 /// [`IMAGE_CONTEXT`] global static variable handles `sdl2::image` context.
 ///
 static IMAGE_CONTEXT: OnceLock<Sdl2ImageContext> = OnceLock::new();
-
 /// [`ImageSystem`] is a global handler for image metadata.
 ///
 /// ### `ImageSystem::init` should be called before using anything else from this submodule.

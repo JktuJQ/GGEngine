@@ -7,6 +7,7 @@
 //!
 
 // submodules and public re-exports
+pub mod assets;
 pub mod audio;
 pub mod fonts;
 pub mod images;
