@@ -1,4 +1,7 @@
 /target
 /Cargo.lock
 
+/.idea
+/.vscode
+
 /SDL2*.dll
