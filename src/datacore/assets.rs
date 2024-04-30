@@ -140,7 +140,8 @@ impl AssetManager {
     ///
     /// ```rust, no_run
     /// # use ggengine::datacore::assets::AssetManager;
-    /// let manager: AssetManager = AssetManager::initialize_at("assets").expect("Filename should be correct");
+    /// let manager: AssetManager = AssetManager::initialize_at("assets")
+    ///     .expect("Filename should be correct");
     /// ```
     ///
     pub fn initialize_at(path: impl AsRef<Path>) -> Result<Self, Error> {
@@ -161,7 +162,8 @@ impl AssetManager {
     /// ```rust, no_run
     /// # use ggengine::datacore::assets::{AssetManager, AssetMetadata, AssetFormat};
     /// # use std::path::PathBuf;
-    /// let manager: AssetManager = AssetManager::initialize_at("assets").expect("Filename should be correct");
+    /// let manager: AssetManager = AssetManager::initialize_at("assets")
+    ///     .expect("Filename should be correct");
     ///
     /// let asset: String = String::from("data");
     /// manager.save_asset(AssetMetadata {
@@ -178,7 +180,8 @@ impl AssetManager {
     /// ```rust, no_run
     /// # use ggengine::datacore::assets::{AssetManager, AssetMetadata, AssetFormat};
     /// # use std::path::PathBuf;
-    /// let manager: AssetManager = AssetManager::initialize_at("assets").expect("Filename should be correct");
+    /// let manager: AssetManager = AssetManager::initialize_at("assets")
+    ///     .expect("Filename should be correct");
     ///
     /// let asset: String = manager.load_asset(AssetMetadata {
     ///     filename: PathBuf::from("asset.data"),

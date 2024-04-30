@@ -503,7 +503,8 @@ impl<'a> Image<'a> {
     /// # use ggengine::datacore::images::Image;
     /// # use ggengine::datacore::assets::FromFile;
     /// # use std::path::Path;
-    /// let mut image: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct");
+    /// let mut image: Image = Image::from_file(Path::new("i.png"))
+    ///     .expect("Filename should be correct");
     /// let (x, y): (u32, u32) = (100, 200);  // Accesses (100, 200) pixel
     /// let coord: usize = image.pixel_offset(x, y);
     /// println!("{:?}",

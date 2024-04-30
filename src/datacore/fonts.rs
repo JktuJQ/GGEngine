@@ -290,7 +290,8 @@ impl Font {
     /// # use ggengine::mathcore::Color;
     /// # use std::path::Path;
     /// FontSystem::init();
-    /// let font: Font = PartialFont::from_file(Path::new("font.ttf")).expect("Filename should be correct")
+    /// let font: Font = PartialFont::from_file(Path::new("font.ttf"))
+    ///     .expect("Filename should be correct")
     ///     .with_size(14).expect("FontSystem::init was called");
     /// font.show_text(FontShowMode::Solid { color: Color::BLACK }, "ggengine")
     ///     .expect("Conversion should not fail");
@@ -308,7 +309,8 @@ impl Font {
     /// # use ggengine::mathcore::Color;
     /// # use std::path::Path;
     /// FontSystem::init();
-    /// let font: Font = PartialFont::from_file(Path::new("font.ttf")).expect("Filename should be correct")
+    /// let font: Font = PartialFont::from_file(Path::new("font.ttf"))
+    ///     .expect("Filename should be correct")
     ///     .with_size(14).expect("FontSystem::init was called");
     /// font.show_character(FontShowMode::Solid { color: Color::BLACK }, 'a')
     ///     .expect("Conversion should not fail");
@@ -326,7 +328,8 @@ impl Font {
     /// # use ggengine::mathcore::Color;
     /// # use std::path::Path;
     /// FontSystem::init();
-    /// let font: Font = PartialFont::from_file(Path::new("font.ttf")).expect("Filename should be correct")
+    /// let font: Font = PartialFont::from_file(Path::new("font.ttf"))
+    ///     .expect("Filename should be correct")
     ///     .with_size(14).expect("FontSystem::init was called");
     /// font.show_latin1_text(FontShowMode::Solid { color: Color::BLACK },
     ///     &[0xC4, 0x70, 0x70, 0x6C, 0x65]
