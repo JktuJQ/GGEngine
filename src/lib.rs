@@ -21,3 +21,4 @@ extern crate serde_cbor;
 // cores
 pub mod datacore;
 pub mod mathcore;
+pub mod graphicscore;
