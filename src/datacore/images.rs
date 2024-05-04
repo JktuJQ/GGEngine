@@ -11,7 +11,7 @@ use bitflags::bitflags;
 use sdl2::{
     image::{
         init as image_init, InitFlag as ImageInitFlag, LoadSurface as ImageLoadSurface,
-        SaveSurface as ImageSaveSurface, Sdl2ImageContext,
+        SaveSurface as ImageSaveSurface, Sdl2ImageContext as ImageContext,
     },
     pixels::PixelFormatEnum as ImagePixelFormatEnum,
     rect::Rect as Sdl2Rect,
@@ -28,7 +28,7 @@ use std::{
 ///
 /// Only RGB-based formats are supported, some with alpha channel and some without it.
 ///
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PixelFormat {
     /// RGB332 color format.
     ///
@@ -141,11 +141,12 @@ impl PixelFormat {
     pub const ABGR32: Self = Self::ABGR8888;
 }
 impl PixelFormat {
+    // All functions that are providing gate between `ggengine` and `sdl2` extend their API to `crate` visibility.
     /// Converts `sdl2` ImagePixelFormatEnum to [`PixelFormat`].
     ///
-    /// If format is not supported by this library, an error is returned.
+    /// If format is not supported by this library, `None` is returned.
     ///
-    fn from_sdl2enum(pixel_format: ImagePixelFormatEnum) -> Option<Self> {
+    pub(crate) fn from_sdl_pixel_format_enum(pixel_format: ImagePixelFormatEnum) -> Option<Self> {
         Some(match pixel_format {
             ImagePixelFormatEnum::RGB332 => Self::RGB332,
             ImagePixelFormatEnum::RGB444 => Self::RGB444,
@@ -179,9 +180,10 @@ impl PixelFormat {
             _ => return None,
         })
     }
+    // All functions that are providing gate between `ggengine` and `sdl2` extend their API to `crate` visibility.
     /// Returns `sdl2` representation of this enum.
     ///
-    fn to_sdl2enum(self) -> ImagePixelFormatEnum {
+    pub(crate) fn to_sdl_pixel_format_enum(self) -> ImagePixelFormatEnum {
         match self {
             Self::RGB332 => ImagePixelFormatEnum::RGB332,
             Self::RGB444 => ImagePixelFormatEnum::RGB444,
@@ -294,9 +296,10 @@ pub struct ImageArea {
     right_lower: (u32, u32),
 }
 impl ImageArea {
+    // All functions that are providing gate between `ggengine` and `sdl2` extend their API to `crate` visibility.
     /// Constructs `sdl2` rect that matches image area.
     ///
-    fn to_sdl_rect(self) -> Sdl2Rect {
+    pub(crate) fn to_sdl_rect(self) -> Sdl2Rect {
         Sdl2Rect::new(
             i32::try_from(self.left_upper.0).expect("Area width should not exceed `i32::MAX`"),
             i32::try_from(self.left_upper.0).expect("Area height should not exceed `i32::MAX`"),
@@ -382,12 +385,23 @@ pub struct Image<'a> {
     surface: ImageSurface<'a>,
 }
 impl<'a> Image<'a> {
-    // Images are used all over game engine and that's why these functions extend [`Image`] internal API to `crate` visibility.
-    // Even though this is considered bad practice, it feels like a necessity at the moment.
+    // All functions that are providing gate between `ggengine` and `sdl2` extend their API to `crate` visibility.
     /// Constructs [`Image`] from `sdl2` surface.
     ///
     pub(crate) fn from_sdl_surface(filename: PathBuf, surface: ImageSurface<'a>) -> Self {
         Self { filename, surface }
+    }
+    // All functions that are providing gate between `ggengine` and `sdl2` extend their API to `crate` visibility.
+    /// Returns reference to underlying `ImageSurface`.
+    ///
+    pub(crate) fn get_sdl_surface(&self) -> &ImageSurface<'a> {
+        &self.surface
+    }
+    // All functions that are providing gate between `ggengine` and `sdl2` extend their API to `crate` visibility.
+    /// Returns mutable reference to underlying `ImageSurface`.
+    ///
+    pub(crate) fn get_sdl_surface_mut(&mut self) -> &mut ImageSurface<'a> {
+        &mut self.surface
     }
 
     /// Returns name of file from which [`Image`] was initialized or empty `Path`, if it was created manually.
@@ -407,7 +421,7 @@ impl<'a> Image<'a> {
     pub fn new(width: u32, height: u32, format: PixelFormat) -> Self {
         Self {
             filename: PathBuf::new(),
-            surface: ImageSurface::new(width, height, format.to_sdl2enum())
+            surface: ImageSurface::new(width, height, format.to_sdl_pixel_format_enum())
                 .expect("All `PixelFormat` variants have valid representations in `sdl2`"),
         }
     }
@@ -429,7 +443,7 @@ impl<'a> Image<'a> {
                 width,
                 height,
                 pitch,
-                format.to_sdl2enum(),
+                format.to_sdl_pixel_format_enum(),
             )
             .map_err(|message| Error::new(ErrorKind::InvalidData, message))?,
         })
@@ -448,7 +462,7 @@ impl<'a> Image<'a> {
             filename: self.filename.clone(),
             surface: self
                 .surface
-                .convert_format(format.to_sdl2enum())
+                .convert_format(format.to_sdl_pixel_format_enum())
                 .expect("All conversions should not fail"),
         }
     }
@@ -636,8 +650,10 @@ impl<'a> Image<'a> {
     }
     /// Returns image's pixel format or `None`, if format wasn't recognised.
     ///
+    /// Even if format was not recognised, all `Image` methods would still work.
+    ///
     pub fn pixel_format(&self) -> Option<PixelFormat> {
-        PixelFormat::from_sdl2enum(self.surface.pixel_format_enum())
+        PixelFormat::from_sdl_pixel_format_enum(self.surface.pixel_format_enum())
     }
 }
 impl<'a> FromFile for Image<'a> {
@@ -656,7 +672,7 @@ impl<'a> FromFile for Image<'a> {
     fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
         let surface: ImageSurface = ImageSurface::from_file(path.as_ref())
             .map_err(|message| Error::new(ErrorKind::NotFound, message))?;
-        if PixelFormat::from_sdl2enum(surface.pixel_format_enum()).is_none() {
+        if PixelFormat::from_sdl_pixel_format_enum(surface.pixel_format_enum()).is_none() {
             return Err(Error::new(ErrorKind::InvalidData, "Wrong image format"));
         }
         Ok(Image {
@@ -711,7 +727,7 @@ bitflags!(
 
 /// [`IMAGE_CONTEXT`] global static variable handles `sdl2::image` context.
 ///
-static IMAGE_CONTEXT: OnceLock<Sdl2ImageContext> = OnceLock::new();
+static IMAGE_CONTEXT: OnceLock<ImageContext> = OnceLock::new();
 /// [`ImageSystem`] is a global handler for image metadata.
 ///
 /// ### `ImageSystem::init` should be called before using anything else from this submodule.

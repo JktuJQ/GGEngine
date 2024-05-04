@@ -18,7 +18,8 @@ use crate::{
 use bitflags::bitflags;
 use sdl2::ttf::{
     init as ttf_init, Font as TTFont, FontError as TTFontError, FontStyle as TTFontStyle,
-    Hinting as TTFontHinting, PartialRendering as TTFPartialRendering, Sdl2TtfContext,
+    Hinting as TTFontHinting, PartialRendering as TTFPartialRendering,
+    Sdl2TtfContext as TTFContext,
 };
 use std::path::PathBuf;
 use std::{
@@ -30,7 +31,7 @@ use std::{
 
 /// [`FontShowMode`] enum lists possible modes for showing truetype fonts.
 ///
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum FontShowMode {
     /// Allows showing text in a single line with given color.
     ///
@@ -123,8 +124,11 @@ bitflags!(
 );
 /// [`FontHinting`] enum lists possible hintings for truetype fonts.
 ///
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum FontHinting {
+    /// No hintings.
+    ///
+    Nothing,
     /// Normal font.
     ///
     Normal,
@@ -134,14 +138,12 @@ pub enum FontHinting {
     /// Mono font.
     ///
     Mono,
-    /// No hintings.
-    ///
-    Nothing,
 }
 impl FontHinting {
+    // All functions that are providing gate between `ggengine` and `sdl2` extend their API to `crate` visibility.
     /// Converts `sdl2` `Hinting` to [`FontHinting`].
     ///
-    fn from_sdl2enum(hinting: TTFontHinting) -> Self {
+    pub(crate) fn from_sdl_hinting(hinting: TTFontHinting) -> Self {
         match hinting {
             TTFontHinting::Normal => FontHinting::Normal,
             TTFontHinting::Light => FontHinting::Light,
@@ -149,9 +151,10 @@ impl FontHinting {
             TTFontHinting::None => FontHinting::Nothing,
         }
     }
+    // All functions that are providing gate between `ggengine` and `sdl2` extend their API to `crate` visibility.
     /// Returns `sdl2` representation of this enum.
     ///
-    fn to_sdl2enum(self) -> TTFontHinting {
+    pub(crate) fn to_sdl_hinting(self) -> TTFontHinting {
         match self {
             FontHinting::Normal => TTFontHinting::Normal,
             FontHinting::Light => TTFontHinting::Light,
@@ -458,12 +461,12 @@ impl Font {
     /// Sets new hinting for this font.
     ///
     pub fn set_hinting(&mut self, hinting: FontHinting) {
-        self.font.set_hinting(hinting.to_sdl2enum());
+        self.font.set_hinting(hinting.to_sdl_hinting());
     }
     /// Returns current hinting of this font.
     ///
     pub fn get_hinting(&self) -> FontHinting {
-        FontHinting::from_sdl2enum(self.font.get_hinting())
+        FontHinting::from_sdl_hinting(self.font.get_hinting())
     }
 }
 impl fmt::Debug for Font {
@@ -477,7 +480,7 @@ impl fmt::Debug for Font {
 
 /// [`TTF_CONTEXT`] global static variable handles `sdl2::ttf` context.
 ///
-static TTF_CONTEXT: OnceLock<Sdl2TtfContext> = OnceLock::new();
+static TTF_CONTEXT: OnceLock<TTFContext> = OnceLock::new();
 /// [`FontSystem`] is a global handler for truetype fonts metadata.
 ///
 /// ### `FontSystem::init` should be called before using anything else from this submodule.

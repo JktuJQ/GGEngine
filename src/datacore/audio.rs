@@ -18,7 +18,7 @@ use bitflags::bitflags;
 use sdl2::mixer::{
     allocate_channels as mixer_allocate_channels, init as mixer_init,
     open_audio as mixer_open_audio, Channel as MixerChannel, Chunk as MixerChunk,
-    InitFlag as MixerInitFlag, Music as MixerMusic, Sdl2MixerContext,
+    InitFlag as MixerInitFlag, Music as MixerMusic, Sdl2MixerContext as MixerContext,
     AUDIO_F32LSB as MixerAUDIO_F32LSB, AUDIO_F32MSB as MixerAUDIO_F32MSB,
     AUDIO_S16LSB as MixerAUDIO_S16LSB, AUDIO_S16MSB as MixerAUDIO_S16MSB,
     AUDIO_S32LSB as MixerAUDIO_S32LSB, AUDIO_S32MSB as MixerAUDIO_S32MSB,
@@ -461,7 +461,7 @@ bitflags! (
 ///    `MSB` for most significant byte (high-order byte, big-endian order),
 ///    `SYS` for native byte order (those are implemented as constants that depend on target platform).
 ///
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum SampleFormat {
     /// 32-bit floating point samples in little-endian byte order.
     ///
@@ -521,9 +521,10 @@ impl SampleFormat {
     pub const U16SYS: Self = Self::U16MSB;
 }
 impl SampleFormat {
+    // All functions that are providing gate between `ggengine` and `sdl2` extend their API to `crate` visibility.
     /// Returns `sdl2::mixer` representation of [`SampleFormat`] enum.
     ///
-    fn to_u16(self) -> u16 {
+    pub(crate) fn to_sdl_u16(self) -> u16 {
         match self {
             SampleFormat::F32LSB => MixerAUDIO_F32LSB,
             SampleFormat::F32MSB => MixerAUDIO_F32MSB,
@@ -545,7 +546,7 @@ impl Default for SampleFormat {
 }
 /// [`AudioChannels`] enum lists number of channels that can be used (1 is mono, 2 is stereo, etc.).
 ///
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum AudioChannels {
     /// Mono (only 1 channel).
     ///
@@ -573,7 +574,7 @@ impl Default for AudioChannels {
 }
 /// [`MIXER_CONTEXT`] global static variable handles `sdl2::mixer` context.
 ///
-static MIXER_CONTEXT: OnceLock<Sdl2MixerContext> = OnceLock::new();
+static MIXER_CONTEXT: OnceLock<MixerContext> = OnceLock::new();
 /// [`AudioSystem`] is a global handler for audio metadata.
 ///
 /// ### `AudioSystem::init` should be called before using anything else from this submodule.
@@ -626,7 +627,7 @@ impl AudioSystem {
         }
         mixer_open_audio(
             i32::try_from(frequency).expect("Frequency value should not exceed `i32::MAX`"),
-            sample_format.to_u16(),
+            sample_format.to_sdl_u16(),
             channels as i32,
             i32::try_from(chunk_size).expect("Chunk size value should not exceed `i32::MAX`"),
         )
