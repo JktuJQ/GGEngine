@@ -9,10 +9,7 @@
 //!
 
 use crate::{
-    datacore::{
-        assets::{FromFile, ToFile},
-        images::Image,
-    },
+    datacore::{assets::FromFile, images::Image},
     mathcore::{vectors::PointInt, Color},
 };
 use bitflags::bitflags;
@@ -247,13 +244,6 @@ impl FromFile for PartialFont {
         Ok(Self {
             filename: filename.as_ref().to_path_buf(),
         })
-    }
-}
-impl ToFile for PartialFont {
-    /// This is a no-op since all fonts are stored externally.
-    ///
-    fn to_file(&self, _filename: impl AsRef<Path>) -> Result<(), Error> {
-        Ok(())
     }
 }
 impl fmt::Debug for PartialFont {

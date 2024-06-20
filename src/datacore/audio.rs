@@ -10,10 +10,7 @@
 //! To further understand relations between those structs, traits, enums and constants, it is encouraged to read docs for submodule items.
 //!
 
-use crate::{
-    datacore::assets::{FromFile, ToFile},
-    mathcore::Angle,
-};
+use crate::{datacore::assets::FromFile, mathcore::Angle};
 use bitflags::bitflags;
 use sdl2::mixer::{
     allocate_channels as mixer_allocate_channels, init as mixer_init,
@@ -125,13 +122,6 @@ impl FromFile for Sound {
         })
     }
 }
-impl ToFile for Sound {
-    /// This is a no-op since all sounds are stored externally.
-    ///
-    fn to_file(&self, _filename: impl AsRef<Path>) -> Result<(), Error> {
-        Ok(())
-    }
-}
 impl fmt::Debug for Sound {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Sound")
@@ -200,13 +190,6 @@ impl FromFile for Music {
             music: MixerMusic::from_file(path)
                 .map_err(|message| Error::new(ErrorKind::NotFound, message))?,
         })
-    }
-}
-impl ToFile for Music {
-    /// This is a no-op since all sounds are stored externally.
-    ///
-    fn to_file(&self, _filename: impl AsRef<Path>) -> Result<(), Error> {
-        Ok(())
     }
 }
 impl fmt::Debug for Music {

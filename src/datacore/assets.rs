@@ -1,8 +1,7 @@
 //! `datacore::assets` submodule provides traits and structs that encapsulate work with assets.
 //!
 //! It defines traits like [`FromFile`] and [`ToFile`] that are implemented on structs which are
-//! either serializable or deserializable, but those traits are also implemented on `Sound`, `Image` etc.
-//! for which `serde`'s serialization and deserialization is not applicable.
+//! either serializable or deserializable.
 //! You can find more about data formats that `ggengine` provides in [`AssetFormat`] enum.
 //!
 //! `ggengine` serializes `Rust`-side data by using Concise Binary Object Representation format.
@@ -31,6 +30,8 @@ pub trait FromFile {
 impl<T: for<'a> Deserialize<'a>> FromFile for T {
     /// Restores data from given file.
     ///
+    /// This function returns an error if file does not exist or if data is not recoverable.
+    ///
     fn from_file(filename: impl AsRef<Path>) -> Result<Self, Error> {
         let file: File = File::open(filename)?;
         serde_cbor::from_reader(file)
@@ -40,12 +41,13 @@ impl<T: for<'a> Deserialize<'a>> FromFile for T {
 
 /// [`ToFile`] trait is implemented on objects that can be saved to file (serialized).
 ///
-/// There is an auto implementation on all types that implement `serde::Serialized`.
+/// There is an auto implementation on all types that implement `serde::Serialized` and there is
+/// also manual implementation for `Image`.
 ///
-/// There are also several implementations on data formats that are not deserializable by `serde` (audio, images and fonts),
-/// but for audio and fonts they are no-op (and are implemented only for uniformity)
-/// since it's pointless to serialize data that can only be retrieved externally or
-/// for objects that are initialized from data that is serializable.
+/// To hold up certain constraints, this trait is not implemented on types such as `Sound`, `Music` and `PartialFont`,
+/// because those are fully external to `ggengine` and `ggengine` cannot change them,
+/// so it's pointless to serialize data that can only be retrieved externally or
+/// to serialize objects that are initialized from data that is serializable.
 ///
 pub trait ToFile {
     /// Serializes object to file.
@@ -54,6 +56,12 @@ pub trait ToFile {
 }
 impl<T: Serialize> ToFile for T {
     /// Saves data to file.
+    ///
+    /// This implementation will create a file if it does not exist, and will truncate it if it does.
+    /// All manual implementations should follow this principle for uniformity.
+    ///
+    /// This function fails if file creation or truncation fails or if data is not
+    /// serializable by CBOR.
     ///
     fn to_file(&self, filename: impl AsRef<Path>) -> Result<(), Error> {
         let file: File = File::create(filename)?;
