@@ -17,7 +17,7 @@ name = "ggengine"
 path = "src/lib.rs"
 
 [dependencies.sdl2]
-version = "0.36.0"
+version = "0.37.0"
 features = ["mixer", "image", "ttf"]
 
 [dependencies.bitflags]
