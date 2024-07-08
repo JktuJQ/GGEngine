@@ -15,7 +15,7 @@ use sdl2::{pixels::Color as SdlColor, render::BlendMode as SdlBlendMode};
 /// that all color values vary from [0; 1] where 0 corresponds to `x = 0` and 1 to `x = 255` and all out-of-bounds values are clamped
 /// (those implicit conversions is made for clarity of transformations).
 ///
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BlendingType {
     /// No blending is applied.
     ///

@@ -18,8 +18,8 @@
 //!
 
 use crate::datacore::images::{Image, PixelFormat};
-use sdl2::image::LoadTexture;
 use sdl2::{
+    image::LoadTexture,
     render::{
         Texture as RenderTexture, TextureAccess as RenderTextureAccess,
         TextureCreator as RenderTextureCreator, TextureQuery as RenderTextureQuery,
@@ -35,7 +35,7 @@ use std::{
 
 /// [`AccessType`] enum lists variants how texture can be accessed by the renderer.
 ///
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum AccessType {
     /// Static access modifier
     /// (texture changed rarely or does not change at all).
@@ -73,18 +73,9 @@ impl AccessType {
     }
 }
 
-// This enum should actually be a union, since it would be safe to reference fields since underlying `RenderTextureCreator`
-// is not dependent on the generic T constraint (struct still has constant size and layout).
-// Currently, it is enum because of deliberate decision to not use `unsafe` in `ggengine` library.
-//
-/// [`InnerTextureCreator`] enum (more of a union) gathers the only two possible exact type constraints for `RenderTextureCreator` to
+/// [`InnerTextureCreator`] enum gathers the only two possible exact type constraints for `RenderTextureCreator` to
 /// encapsulate those away. That allows to get rid of the generic argument and get the lifetime specifier even
 /// for `WindowContext` variant which does not need it.
-///
-/// # Note
-/// This implementation is a workaround for encapsulating `sdl` API and getting rid of generic argument in the `RenderTextureCreator`.
-///
-/// Those pattern matching guards can slow down the program, but those functions should not be used frequently anyway.
 ///
 enum InnerTextureCreator<'a> {
     /// Variant that handles `RenderTextureCreator` for the `SurfaceContext`.
@@ -95,7 +86,7 @@ enum InnerTextureCreator<'a> {
     ForWindow(RenderTextureCreator<WindowContext>),
 }
 impl<'a> InnerTextureCreator<'a> {
-    /// Returns the best pixel format for `RenderTextureCreator` or `None`, if the format is not recognised by `ggengine`.
+    /// Returns the best pixel format for `InnerTextureCreator` or `None`, if the format is not recognised by `ggengine`.
     ///
     /// Even if the format is not recognised, it is still usable by `ggengine`.
     ///
@@ -112,7 +103,7 @@ impl<'a> InnerTextureCreator<'a> {
 
     /// Creates new texture with given size, format and access type.
     ///
-    /// If given format is `None`, `RenderTextureCreator` will use the best pixel format for [`Texture`].
+    /// If given format is `None`, `InnerTextureCreator` will use the best pixel format for [`Texture`].
     ///
     fn create_texture(
         &self,
@@ -142,7 +133,7 @@ impl<'a> InnerTextureCreator<'a> {
             },
         }
     }
-    /// Creates [`Texture`] from the `Image`.
+    /// Creates [`Texture`] from the [`Image`].
     ///
     fn create_texture_from_image(&self, image: &Image) -> Texture {
         Texture {
@@ -193,8 +184,8 @@ impl<'a> fmt::Debug for InnerTextureCreator<'a> {
         }
     }
 }
-/// [`TextureCreator`] struct handles creations of `Texture`s that cannot outlive their creator. This struct is the only way to obtain
-/// [`Texture`] instance.
+/// [`TextureCreator`] struct handles creations of [`Texture`]s that cannot outlive their creator.
+/// This struct is the only way to obtain [`Texture`] instance.
 ///
 /// You cannot manually instantiate [`TextureCreator`], you have to get it from the other structs.
 /// It is encouraged to read docs to find out how.
@@ -206,7 +197,28 @@ pub struct TextureCreator<'a> {
     texture_creator: InnerTextureCreator<'a>,
 }
 impl<'a> TextureCreator<'a> {
-    /// Returns the best pixel format for `TextureCreator` or `None`, if the format is not recognised by `ggengine`.
+    // All functions that are providing gate between `ggengine` and `sdl2` extend their API to `crate` visibility.
+    /// Initializes [`TextureCreator`] for image from `sdl2` texture creator.
+    ///
+    pub(crate) fn from_sdl_texture_creator_image(
+        texture_creator: RenderTextureCreator<SurfaceContext<'a>>,
+    ) -> TextureCreator<'a> {
+        TextureCreator {
+            texture_creator: InnerTextureCreator::ForImage(texture_creator),
+        }
+    }
+    // All functions that are providing gate between `ggengine` and `sdl2` extend their API to `crate` visibility.
+    /// Initializes [`TextureCreator`] for window from `sdl2` texture creator.
+    ///
+    pub(crate) fn from_sdl_texture_creator_window(
+        texture_creator: RenderTextureCreator<WindowContext>,
+    ) -> TextureCreator<'a> {
+        TextureCreator {
+            texture_creator: InnerTextureCreator::ForWindow(texture_creator),
+        }
+    }
+
+    /// Returns the best pixel format for [`TextureCreator`] or `None`, if the format is not recognised by `ggengine`.
     ///
     /// Even if the format is not recognised, it is still usable by `ggengine`.
     ///
@@ -228,7 +240,7 @@ impl<'a> TextureCreator<'a> {
         self.texture_creator
             .create_texture(width, height, format, access_type)
     }
-    /// Creates [`Texture`] from the `Image`.
+    /// Creates [`Texture`] from the [`Image`].
     ///
     pub fn create_texture_from_image(&self, image: &Image) -> Texture {
         self.texture_creator.create_texture_from_image(image)
@@ -254,7 +266,11 @@ impl<'a> TextureCreator<'a> {
 /// # use ggengine::graphicscore::textures::{TextureCreator, Texture, AccessType};
 /// # use ggengine::datacore::images::PixelFormat;
 /// let texture_creator: TextureCreator = todo!("obtain the texture creator");
-/// let texture: Texture = texture_creator.create_texture(300, 300, Some(PixelFormat::RGBA8888), AccessType::Static);
+/// let texture: Texture = texture_creator.create_texture(
+///     300, 300,
+///     Some(PixelFormat::RGBA8888),
+///     AccessType::Static,
+/// );
 /// ```
 ///
 pub struct Texture<'a> {
@@ -281,9 +297,12 @@ impl<'a> Texture<'a> {
     /// Texture's access type must be `AccessType::Streaming`, otherwise it is a no-op and this function
     /// just returns `None`.
     ///
+    /// This function might cause performance issues, so it should not be used frequently.
+    ///
     /// # Note
     /// This function should not be used to get the actual data of [`Texture`], because due to optimisation
     /// inner data does not necessarily contain the old texture data.
+    ///
     ///
     /// # Example
     /// ```rust, no_run

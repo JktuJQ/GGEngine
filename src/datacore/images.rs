@@ -392,6 +392,12 @@ impl<'a> Image<'a> {
         Self { filename, surface }
     }
     // All functions that are providing gate between `ggengine` and `sdl2` extend their API to `crate` visibility.
+    /// Destructures itself by consuming [`Image`].
+    ///
+    pub(crate) fn destructure(self) -> (PathBuf, ImageSurface<'a>) {
+        (self.filename, self.surface)
+    }
+    // All functions that are providing gate between `ggengine` and `sdl2` extend their API to `crate` visibility.
     /// Returns reference to underlying `ImageSurface`.
     ///
     pub(crate) fn get_sdl_surface(&self) -> &ImageSurface<'a> {
@@ -552,7 +558,8 @@ impl<'a> Image<'a> {
     /// ```
     ///
     pub fn crop(&self, area: ImageArea) -> Image {
-        let mut result: ImageSurface = ImageSurface::new(area.width(), area.height(), self.surface.pixel_format_enum()).expect("`ImageSystem::init` should be called before using anything else from `ggengine::datacore::image` submodule.");
+        let mut result: ImageSurface = ImageSurface::new(area.width(), area.height(), self.surface.pixel_format_enum())
+            .expect("`ImageSystem::init` should be called before using anything else from `ggengine::datacore::image` submodule.");
         let _ = self
             .surface
             .blit(Some(area.to_sdl_rect()), &mut result, None)

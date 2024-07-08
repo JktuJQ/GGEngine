@@ -6,4 +6,5 @@
 mod ext;
 pub use ext::*;
 
+pub mod drawing;
 pub mod textures;

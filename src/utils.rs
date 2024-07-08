@@ -257,9 +257,15 @@ pub struct Window {
 }
 impl Window {
     // All functions that are providing gate between `ggengine` and `sdl2` extend their API to `crate` visibility.
-    /// Destructures itself by consuming `Window` and returning `sdl2` Window.
+    /// Initializes [`Window`] from `sdl2` window.
     ///
-    pub(crate) fn destructure_to_sdl_window(self) -> SdlWindow {
+    pub(crate) fn from_sdl_window(window: SdlWindow) -> Window {
+        Window { window }
+    }
+    // All functions that are providing gate between `ggengine` and `sdl2` extend their API to `crate` visibility.
+    /// Destructures itself by consuming [`Window`].
+    ///
+    pub(crate) fn destructure(self) -> SdlWindow {
         self.window
     }
 
