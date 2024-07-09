@@ -16,6 +16,12 @@ categories = ["game-engines", "multimedia"]
 name = "ggengine"
 path = "src/lib.rs"
 
+[workspace]
+members = ["src/gamecore/ggengine_proc_macros"]
+[dependencies.ggengine_proc_macros]
+path = "src/gamecore/ggengine_proc_macros"
+version = "0.1.0"
+
 [dependencies.sdl2]
 version = "0.37.0"
 features = ["mixer", "image", "ttf"]
