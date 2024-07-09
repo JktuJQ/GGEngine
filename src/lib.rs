@@ -26,5 +26,6 @@ pub mod utils;
 
 // cores
 pub mod datacore;
+pub mod gamecore;
 pub mod graphicscore;
 pub mod mathcore;
