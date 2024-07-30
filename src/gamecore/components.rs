@@ -4,4 +4,13 @@
 //! and implements several basic components used in games.
 //!
 
-pub trait Component { }
+use std::{any::type_name, fmt};
+
+pub trait Component: 'static {}
+impl<T: 'static> Component for T {}
+
+impl fmt::Debug for dyn Component {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "dyn Component ({:?})", type_name::<Self>())
+    }
+}
