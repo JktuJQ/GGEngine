@@ -153,8 +153,285 @@ impl ComponentMap {
         self.components.len()
     }
     /// Returns `true` if the map contains no elements, otherwise `false`.
+    /// 
     pub fn is_empty(&self) -> bool {
         self.components.is_empty()
     }
 }
 
+/// Type alias for `Box<dyn Component>`.
+/// 
+/// This alias is frequently used in [`ComponentTable`] struct.
+/// 
+pub type StoredComponent = Box<dyn Component>;
+/// [`ComponentTable`] is a column-oriented structure-of-arrays based storage
+/// that maps `GameObject`s to their `Component`s.
+///
+/// Conceptually, [`ComponentTable`] can be thought of as an `HashMap<ComponentId, Vec<T: Component>>`,
+/// where each `Vec` contains components of one type that belong to different `GameObject`s.
+///
+/// Each row corresponds to a single `GameObject`
+/// (i.e. equal indices of `Vec`s point to different components on the same entity)
+/// and each column corresponds to a single `Component`
+/// (i.e. every `Vec` contains all `Component`s of one type that belong to different `GameObject`s).
+///
+/// Fetching components from a table involves fetching the associated column for a `Component` type
+/// (via its `ComponentId`), then fetching the `GameObject`'s row within that column.
+/// 
+/// # Perfomance
+/// [`ComponentTable`]'s maps use [`NoOpHasher`], because ids are reliable hashes due to implementation.
+/// This speeds up those 'amortized `O(1)`' even more.
+/// 
+/// Since components are stored in columnar contiguous blocks of memory, table is optimized for fast querying,
+/// but frequent insertion and removal can be relatively slow.
+/// 
+/// Implementation with an actual table (represented by `Vec` that emulates `Vec<Vec<T: Component>>`)
+/// could be a bit faster on querying due to cache locality, but insertion and removal would be very slow
+/// (insertion would require shifting most of the table and removal would too,
+/// unless we decide to just 'forget' deleted data, but this will hurt cache locality badly).
+/// Chosen approach is a good trade-off between speed of lookups/querying and speed of insertion/removal,
+/// with the accent on the former.
+/// 
+/// To see more on complexity topic, you can read docs for corresponding methods.
+///
+#[derive(Debug)]
+pub struct ComponentTable {
+    /// Map that tracks which position in table belongs to exact `GameObjectId`.
+    /// 
+    /// Usage of this map and `removed` vector allows packing `GameObject`s in the table tightly,
+    /// which optimises cache locality and memory usage.
+    /// 
+    gameobject_map: IdMap<GameObjectId, usize>,
+    /// Vector that holds indices that were binded to removed `GameObjectId`s.
+    /// 
+    /// Insertion of `GameObjectId`s will use removed indices if possible,
+    /// so that blanks caused by removal of `GameObjectId`s are filled with
+    /// following insertions.
+    /// 
+    removed: Vec<usize>,
+
+    /// Table that holds all components.
+    /// 
+    component_table: IdMap<ComponentId, Vec<Option<StoredComponent>>>,
+}
+impl ComponentTable {
+    /// Initializes new [`ComponentTable`].
+    /// 
+    /// Created [`ComponentTable`] will not allocate until first insertions.
+    /// 
+    /// If you know how much `Component`s and `GameObject`s you are going to use,
+    /// use methods that initialize [`ComponentTable`] with capacity.
+    /// That could greatly increase perfomance, especially if [`ComponentTable`]
+    /// will need to handle frequent insertions and deletions.
+    /// 
+    pub fn new() -> ComponentTable {
+        ComponentTable {
+            gameobject_map: IdMap::with_hasher(NoOpHasherState),
+            removed: Vec::new(),
+
+            component_table: IdMap::with_hasher(NoOpHasherState),
+        }
+    }
+    /// Initializes [`ComponentTable`] with specified capacity for `GameObject` storage.
+    /// 
+    /// `gameobject capacity` greatly affects table perfomance,
+    /// it can severely decrease number of allocations for insertions.
+    /// 
+    /// Use this associated function if you have an estimation on how much
+    /// `GameObject`s you are going to use.
+    /// 
+    pub fn with_gameobject_capacity(capacity: usize) -> ComponentTable {
+        ComponentTable {
+            gameobject_map: IdMap::with_capacity_and_hasher(capacity, NoOpHasherState),
+            removed: Vec::with_capacity(capacity),
+
+            component_table: IdMap::with_hasher(NoOpHasherState),
+        }
+    }
+    /// Initializes [`ComponentTable`] with specified capacity for `Component` storage.
+    /// 
+    /// `component capacity` affects table perfomance, but not as much as `gameobject capacity`.
+    /// 
+    /// Use this associated function if you have an estimation on how much
+    /// `Component`s you are going to use.
+    ///
+    pub fn with_components_capacity(capacity: usize) -> ComponentTable {
+        ComponentTable {
+            gameobject_map: IdMap::with_hasher(NoOpHasherState),
+            removed: Vec::new(),
+
+            component_table: IdMap::with_capacity_and_hasher(capacity, NoOpHasherState),
+        }
+    }
+    /// Initializes [`ComponentTable`] with specified capacity for both `GameObject` and `Component` storage.
+    /// 
+    /// Usage of this associated function should be preferred, because it can greatly increase perfomance
+    /// by decreasing number of allocations.
+    /// 
+    /// Use this associated function if you have an estimation on how much
+    /// `GameObject`s and `Component`s you are going to use.
+    ///
+    pub fn with_gameobject_and_component_capacity(
+        gameobject_capacity: usize,
+        component_capacity: usize,
+    ) -> ComponentTable {
+        ComponentTable {
+            gameobject_map: IdMap::with_capacity_and_hasher(gameobject_capacity, NoOpHasherState),
+            removed: Vec::with_capacity(gameobject_capacity),
+
+            component_table: IdMap::with_capacity_and_hasher(component_capacity, NoOpHasherState),
+        }
+    }
+
+    /// Inserts `GameObjectId` in the [`ComponentTable`].
+    ///
+    /// If any `GameObjectId`s were removed from [`ComponentTable`] and
+    /// their places are not yet filled, inserted `GameObjectId` gets one of theirs place.
+    /// Filling gaps between `GameObjectId`s ensures contiguity of data, and thus
+    /// provides fast querying and efficient memory usage.
+    ///
+    /// # Complexity
+    /// Insertion requires checking last item in `removed` vector which is `O(1)`
+    /// and insertion of this value in a map if it is not already present is amortized `O(1)`.
+    /// Overall complexity is amortized `O(1)`.
+    ///
+    pub fn insert_gameobject(&mut self, gameobject_id: GameObjectId) {
+        let new_index: usize = self.removed.pop().unwrap_or(self.gameobject_count());
+        let _ = self
+            .gameobject_map
+            .entry(gameobject_id)
+            .or_insert(new_index);
+    }
+    /// Removes `GameObjectId` from the [`ComponentTable`].
+    ///
+    /// Gaps that `GameObjectId`s leave after removal are filled with upcoming insertions.
+    ///
+    /// # Complexity
+    /// Removal requires removal of `GameObjectId` from map which is amortized `O(1)`
+    /// and removal of components from columns which requires iterating through `self.component_count()` columns,
+    /// so it is `O(self.component_count())`.
+    /// Overall complexity is `O(self.component_count())`.
+    ///
+    pub fn remove_gameobject(&mut self, gameobject_id: GameObjectId) {
+        let Some(deleted_index) = self.gameobject_map.remove(&gameobject_id) else { return; };
+        self.removed.push(deleted_index);
+        for components in self.component_table.values_mut() {
+            if let Some(component) = components.get_mut(deleted_index) {
+                *component = None;
+            }
+        }
+    }
+
+    /// Inserts column that corresponds to given `ComponentId` if not present.
+    /// 
+    /// This function allocates column with capacity that is equal to `self.gameobject_capacity()`.
+    /// 
+    /// # Complexity
+    /// Insertion requires insertion to map which is amortized `O(1)`.
+    /// Overall complexity is amortized `O(1)`.
+    /// 
+    pub fn insert_component(&mut self, component_id: ComponentId) {
+        let gameobjects: usize = self.gameobject_count();
+        let gameobject_capacity: usize = self.gameobject_capacity();
+        self
+            .component_table
+            .entry(component_id)
+            .or_insert(Vec::with_capacity(gameobject_capacity)).resize_with(gameobjects, || None);
+    }
+    /// Adds component to `GameObjectId` if both `GameObjectId` and `ComponentId` are tracked by [`ComponentTable`].
+    /// If either `GameObjectId` or `ComponentId` are not present, does nothing.
+    /// 
+    /// This function can be also used to replace component if needed.
+    /// 
+    /// # Complexity
+    /// Insertion requires 2 lookups on maps which are amortized `O(1)`
+    /// and changing value in a vector which is `O(1)`.
+    /// Overall complexity is amortized `O(1)`.
+    /// 
+    pub fn add_component_to_gameobject(&mut self, component_id: ComponentId, component: StoredComponent, gameobject_id: GameObjectId) {
+        let Some(&gameobject_index) = self.gameobject_map.get(&gameobject_id) else { return; };
+        let Some(components) = self.component_table.get_mut(&component_id) else { return; };
+        if gameobject_index >= components.len() {
+            components.resize_with(gameobject_index - components.len(), || None);
+        }
+
+        let place: &mut Option<StoredComponent> = components.get_mut(gameobject_index).expect("Existence of index has been ensured.");
+        *place = Some(component);
+    }
+    /// Removes column that corresponds to given `ComponentId` if present.
+    /// 
+    /// # Complexity
+    /// Removal requires removing key from map which is amortized `O(1)`.
+    /// Overall complexity is amortized `O(1)`.
+    ///
+    pub fn remove_component(&mut self, component_id: ComponentId) {
+        let _ = self.component_table.remove(&component_id);
+    }
+    /// Removes component from `GameObjectId` if both `GameObjectId` and `ComponentId` are tracked by [`ComponentTable`].
+    /// If either `GameObjectId` or `ComponentId` are not present, does nothing.
+    /// 
+    /// # Complexity
+    /// Removal requires 2 lookups on maps which are amortized `O(1)`
+    /// and changing value in a vector which is `O(1)`.
+    /// Overall complexity is amortized `O(1)`.
+    /// 
+    pub fn remove_component_from_gameobject(&mut self, component_id: ComponentId, gameobject_id: GameObjectId) {
+        let Some(&gameobject_index) = self.gameobject_map.get(&gameobject_id) else { return; };
+        let Some(components) = self.component_table.get_mut(&component_id) else { return; };
+        let Some(component) = components.get_mut(gameobject_index) else { return; };
+        *component = None;
+    }
+
+    /// Returns component that has given `ComponentId` and is assigned to `GameObject` with given id if present,
+    /// otherwise `None`.
+    /// 
+    /// # Complexity
+    /// Retrieval requires 2 lookups on maps which are amortized `O(1)`
+    /// and retrieving value from a vector which is `O(1)`.
+    /// Overall complexity is amortized `O(1)`.
+    ///    
+    pub fn get_gameobject_component(&self, gameobject_id: GameObjectId, component_id: ComponentId) -> Option<&Option<StoredComponent>> {
+        let Some(&gameobject_index) = self.gameobject_map.get(&gameobject_id) else { return None; };
+        let Some(components) = self.component_table.get(&component_id) else { return None; };
+        components.get(gameobject_index)
+    }
+
+    /// Returns the number of `GameObject`s the table can hold without reallocating.
+    ///
+    /// This number is a lower bound; the [`ComponentTable`] might be able to hold more,
+    /// but is guaranteed to be able to hold at least this many.
+    ///     
+    pub fn gameobject_capacity(&self) -> usize {
+        self.gameobject_map.capacity()
+    }
+    /// Returns the number of `Component`s the table can hold without reallocating.
+    ///
+    /// This number is a lower bound; the [`ComponentTable`] might be able to hold more,
+    /// but is guaranteed to be able to hold at least this many.
+    ///
+    pub fn component_capacity(&self) -> usize {
+        self.component_table.capacity()
+    }
+
+    /// Returns the number of `GameObject`s in the map.
+    ///
+    pub fn gameobject_count(&self) -> usize {
+        self.gameobject_map.len()
+    }
+    /// Returns the number of `Component`s in the map.
+    ///
+    pub fn component_count(&self) -> usize {
+        self.component_table.len()
+    }
+
+    /// Checks whether given `GameObjectId` is tracked by [`ComponentTable`] or not.
+    ///
+    pub fn has_gameobject(&self, gameobject_id: GameObjectId) -> bool {
+        self.gameobject_map.contains_key(&gameobject_id)
+    }
+    /// Checks whether given `ComponentId` is tracked by [`ComponentTable`] or not.
+    ///
+    pub fn has_component(&self, component_id: ComponentId) -> bool {
+        self.component_table.contains_key(&component_id)
+    }
+}
