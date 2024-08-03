@@ -352,7 +352,7 @@ impl ComponentTable {
         let Some(&gameobject_index) = self.gameobject_map.get(&gameobject_id) else { return; };
         let Some(components) = self.component_table.get_mut(&component_id) else { return; };
         if gameobject_index >= components.len() {
-            components.resize_with(gameobject_index - components.len(), || None);
+            components.resize_with(gameobject_index + 1, || None);
         }
 
         let place: &mut Option<StoredComponent> = components.get_mut(gameobject_index).expect("Existence of index has been ensured.");
@@ -393,7 +393,10 @@ impl ComponentTable {
     pub fn get_gameobject_component(&self, gameobject_id: GameObjectId, component_id: ComponentId) -> Option<&Option<StoredComponent>> {
         let Some(&gameobject_index) = self.gameobject_map.get(&gameobject_id) else { return None; };
         let Some(components) = self.component_table.get(&component_id) else { return None; };
-        components.get(gameobject_index)
+        Some(match components.get(gameobject_index) {
+            Some(inner) => inner,
+            None => &None,
+        })
     }
 
     /// Returns the number of `GameObject`s the table can hold without reallocating.
@@ -442,10 +445,7 @@ mod tests {
 
     #[test]
     fn component_map() {
-        use crate::gamecore::{
-            components::Component,
-            identifiers::ComponentId,
-        };
+        use crate::gamecore::identifiers::ComponentId;
         use super::ComponentMap;
 
         let mut component_map: ComponentMap = ComponentMap::new();
@@ -463,5 +463,72 @@ mod tests {
         assert_eq!(component_map.get_or_insert::<i8>(), component_id_i8);
 
         assert_ne!(component_map.get_or_insert::<u8>(), component_id_i8);
+    }
+
+    #[test]
+    fn component_table() {
+        use crate::gamecore::identifiers::{ComponentId, GameObjectId};
+        use std::ops::Deref;
+        use super::{ComponentTable, StoredComponent};
+
+        let gameobject_id0: GameObjectId = GameObjectId::new(0);
+        let gameobject_id1: GameObjectId = GameObjectId::new(1);
+
+        let component_id0: ComponentId = ComponentId::new(0);
+        const COMPONENT0: u8 = 0;
+        let component_id1: ComponentId = ComponentId::new(1);
+        const COMPONENT1: i8 = 0;
+
+        let mut component_table: ComponentTable = ComponentTable::new();
+
+        assert!(component_table.get_gameobject_component(gameobject_id0, component_id0).is_none());
+        component_table.insert_gameobject(gameobject_id0);
+
+        assert!(component_table.get_gameobject_component(gameobject_id0, component_id0).is_none());
+        component_table.insert_component(component_id0);
+
+        assert!(component_table.get_gameobject_component(gameobject_id0, component_id0).is_some());
+        assert!(component_table.get_gameobject_component(gameobject_id0, component_id1).is_none());
+        assert!(component_table.get_gameobject_component(gameobject_id1, component_id0).is_none());
+        assert!(component_table.get_gameobject_component(gameobject_id1, component_id1).is_none());
+
+        component_table.add_component_to_gameobject(component_id0, Box::new(COMPONENT0), gameobject_id0);
+        let retrieval: &Option<StoredComponent> = component_table.get_gameobject_component(gameobject_id0, component_id0).expect("Component was added.");
+        let retrieved_component: &StoredComponent = retrieval.as_ref().expect("Component was added.");
+        assert_eq!(retrieved_component.deref().as_any().downcast_ref::<u8>().expect("u8 was packed."), &COMPONENT0);
+
+
+        component_table.insert_component(component_id1);
+        assert!(component_table.get_gameobject_component(gameobject_id0, component_id1).expect("GameObjectId and ComponentId were inserted.").as_ref().is_none());
+
+        component_table.remove_gameobject(gameobject_id0);
+        assert!(component_table.get_gameobject_component(gameobject_id0, component_id0).is_none());
+
+        component_table.insert_gameobject(gameobject_id0);
+        assert!(component_table.get_gameobject_component(gameobject_id0, component_id0).is_some());
+        component_table.insert_gameobject(gameobject_id1);
+        assert!(component_table.get_gameobject_component(gameobject_id1, component_id0).is_some());
+
+        component_table.add_component_to_gameobject(component_id1, Box::new(COMPONENT1), gameobject_id1);
+        assert!(component_table.get_gameobject_component(gameobject_id0, component_id1).expect("GameObjectId and ComponentId were inserted.").as_ref().is_none());
+        
+        assert!(component_table.get_gameobject_component(gameobject_id1, component_id1).expect("GameObjectId and ComponentId were inserted.").as_ref().is_some());
+
+        component_table.add_component_to_gameobject(component_id0, Box::new(COMPONENT0), gameobject_id0);
+        component_table.add_component_to_gameobject(component_id0, Box::new(COMPONENT0), gameobject_id1);
+        assert_eq!(component_table.get_gameobject_component(gameobject_id0, component_id0)
+            .expect("Component was added.")
+            .as_ref().expect("Component was added.").deref()
+            .as_any().downcast_ref::<u8>().expect("u8 was packed."),
+             component_table.get_gameobject_component(gameobject_id1, component_id0).expect("Component was added.")
+             .as_ref().expect("Component was added.").deref()
+             .as_any().downcast_ref::<u8>().expect("u8 was packed."));
+
+        component_table.remove_component_from_gameobject(component_id0, gameobject_id0);
+        assert!(component_table.get_gameobject_component(gameobject_id0, component_id0).expect("GameObjectId and ComponentId were inserted.").as_ref().is_none());
+
+        component_table.remove_component(component_id0);
+        assert!(component_table.get_gameobject_component(gameobject_id0, component_id0).is_none());
+        assert!(component_table.get_gameobject_component(gameobject_id1, component_id0).is_none());
     }
 }

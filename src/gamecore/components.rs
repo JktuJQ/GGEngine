@@ -4,10 +4,19 @@
 //! and implements several basic components used in games.
 //!
 
-use std::{any::type_name, fmt};
+use std::{
+    any::{type_name, Any},
+    fmt,
+};
 
-pub trait Component: 'static {}
-impl<T: 'static> Component for T {}
+pub trait Component: Any {
+    fn as_any(&self) -> &dyn Any;
+}
+impl<T: Any> Component for T {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
 
 impl fmt::Debug for dyn Component {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
