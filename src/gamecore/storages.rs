@@ -435,3 +435,33 @@ impl ComponentTable {
         self.component_table.contains_key(&component_id)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::gamecore::storages::StoredComponent;
+
+    #[test]
+    fn component_map() {
+        use crate::gamecore::{
+            components::Component,
+            identifiers::ComponentId,
+        };
+        use super::ComponentMap;
+
+        let mut component_map: ComponentMap = ComponentMap::new();
+
+        let component_id_u8: ComponentId = component_map.get_or_insert::<u8>();
+        assert_eq!(component_map.get_or_insert::<u8>(), component_id_u8);
+
+        assert_eq!(component_map.remove::<u8>(), Some(component_id_u8));
+        assert!(component_map.is_empty());
+        assert!(component_map.remove::<u8>().is_none());
+        
+        let component_id_i8: ComponentId = component_map.get_or_insert::<i8>();
+        let component_id_u8: ComponentId = component_map.get_or_insert::<u8>();
+        assert_eq!(component_map.get_or_insert::<u8>(), component_id_u8);
+        assert_eq!(component_map.get_or_insert::<i8>(), component_id_i8);
+
+        assert_ne!(component_map.get_or_insert::<u8>(), component_id_i8);
+    }
+}
