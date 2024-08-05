@@ -42,23 +42,57 @@ impl Volume {
     ///
     pub const MAX: Self = Volume(MixerMAX_VOLUME as u8);
 
+    /// Initializes `Volume` with given value that will be clamped to [0; 128].
+    ///
+    pub fn from_value(value: u8) -> Volume {
+        Volume(value.clamp(u8::MIN, Self::MAX.0))
+    }
+    /// Initializes `Volume` from given percent that will be clamped to [0; 100].
+    ///
+    /// 0% corresponds to silence and 100% to max volume.
+    ///
+    pub fn from_percents(percent: u8) -> Volume {
+        Volume(
+            (f32::from(MixerMAX_VOLUME as u8) * (f32::from(percent.clamp(0, 100)) / 100.0)) as u8,
+        )
+    }
+
     /// Returns corresponding `u8` value.
+    ///
+    /// Returned value is guaranteed to be in [0; 128] range.
     ///
     pub fn get(self) -> u8 {
         self.0
     }
-}
-impl From<u8> for Volume {
-    fn from(value: u8) -> Self {
-        Volume(value.clamp(u8::MIN, Self::MAX.0))
+    /// Returns corresponding percent value.
+    ///
+    /// Returned value is guaranteed to be in [0; 100] range.
+    ///  
+    pub fn get_percents(self) -> u8 {
+        ((f32::from(self.0) / f32::from(MixerMAX_VOLUME as u8)) * 100.0) as u8
     }
 }
 
+/// `seal` hidden module is needed to use `sealed trait` pattern.
+///
+/// It defines empty private seal supertrait that cannot be named by downstream crates,
+/// so we are guaranteed that implementations of seal trait only exist in the current crate.
+///
+mod seal {
+    use sdl2::audio::AudioFormatNum;
+
+    /// Empty private [`Formattable`] supertrait that blocks implementations for `SoundFormat`.
+    ///
+    pub trait Formattable: AudioFormatNum {}
+    impl<T: AudioFormatNum> Formattable for T {}
+}
 /// [`SoundFormat`] trait is implemented on types that are used to represent raw audio data.
 ///
-/// **Do not** implement this trait manually unless a very good reason.
+/// This trait is sealed, so the only implementations are on types
+/// that are supported by [`SampleFormat`] (`f32`, `i8`, `i16`, `i32`, `u8`, `u16`).
 ///
-pub use sdl2::audio::AudioFormatNum as SoundFormat;
+pub trait SoundFormat: seal::Formattable {}
+impl<T: seal::Formattable> SoundFormat for T {}
 
 /// [`Sound`] struct represents one of two main audio primitives - short sample.
 ///
@@ -241,10 +275,9 @@ pub trait Channel {
 
 /// [`SoundChannel`] struct represents channel on which [`Sound`] can be played.
 ///
-/// `ggengine::datacore::audio` supports as many sound channels, as application can allocate.
+/// `ggengine::datacore::audio` supports as many sound channels as application can allocate.
 ///
-#[allow(missing_copy_implementations)]
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct SoundChannel(MixerChannel);
 impl Channel for SoundChannel {
     type AudioData = Sound;
@@ -619,10 +652,9 @@ impl AudioSystem {
 
     /// Allocates exact number of sound channels. Any channels that have id greater than or equal to `channels` will be stopped automatically.
     ///
-    /// By default, there are 8 channels that are available.
-    ///
-    /// # Panics
-    /// There can be at most `i32::MAX` sound channels, so `TryFromIntError` will be returned when passing value that exceeds the limit.
+    /// By default, there are 8 channels that are available and
+    /// there can be at most `i32::MAX` sound channels,
+    /// so `TryFromIntError` will be returned when passing value that exceeds the limit.
     ///
     pub fn allocate_sound_channels(channels: u32) -> Result<(), TryFromIntError> {
         let _ = mixer_allocate_channels(i32::try_from(channels)?);
