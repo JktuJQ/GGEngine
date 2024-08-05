@@ -34,7 +34,7 @@ use std::{
 /// use `write_usize` or `write_u64` instead.**
 ///
 #[derive(Copy, Clone, Debug, Default)]
-pub struct NoOpHasher(usize);
+struct NoOpHasher(usize);
 impl Hasher for NoOpHasher {
     fn finish(&self) -> u64 {
         self.0 as u64
@@ -59,7 +59,7 @@ impl Hasher for NoOpHasher {
 /// This should be passed to collections interfaces (e.g. `HashMap::with_hasher(NoOpHasherState))`.
 ///
 #[derive(Copy, Clone, Debug, Default)]
-pub struct NoOpHasherState;
+struct NoOpHasherState;
 impl BuildHasher for NoOpHasherState {
     type Hasher = NoOpHasher;
 
@@ -72,7 +72,7 @@ impl BuildHasher for NoOpHasherState {
 ///
 /// [`IdMap`] should be used wherever id structs are keys in a `HashMap`.
 ///
-pub type IdMap<K, V> = HashMap<K, V, NoOpHasherState>;
+type IdMap<K, V> = HashMap<K, V, NoOpHasherState>;
 
 /// [`ComponentMap`] struct handles `Component` initialization by binding specific `TypeId`s to exact `ComponentId`.
 /// This approach allows for describing `Component`s as Rust types.
@@ -91,7 +91,7 @@ impl ComponentMap {
     /// The [`ComponentMap`] is initially created with a capacity of 0,
     /// so it will not allocate until it is first inserted into.
     ///
-    pub fn new() -> ComponentMap {
+    pub(super) fn new() -> ComponentMap {
         ComponentMap {
             components: IdMap::with_hasher(NoOpHasherState),
         }
@@ -103,7 +103,7 @@ impl ComponentMap {
     /// This method is allowed to allocate for more elements than `capacity`.
     /// If `capacity` is 0, it will not allocate.
     ///
-    pub fn with_capacity(capacity: usize) -> ComponentMap {
+    pub(super) fn with_capacity(capacity: usize) -> ComponentMap {
         ComponentMap {
             components: IdMap::with_capacity_and_hasher(capacity, NoOpHasherState),
         }
@@ -224,7 +224,7 @@ impl ComponentTable {
     /// That could greatly increase perfomance, especially if [`ComponentTable`]
     /// will need to handle frequent insertions and deletions.
     ///
-    pub fn new() -> ComponentTable {
+    pub(super) fn new() -> ComponentTable {
         ComponentTable {
             gameobject_map: IdMap::with_hasher(NoOpHasherState),
             removed: Vec::new(),
@@ -240,7 +240,7 @@ impl ComponentTable {
     /// Use this associated function if you have an estimation on how much
     /// `GameObject`s you are going to use.
     ///
-    pub fn with_gameobject_capacity(capacity: usize) -> ComponentTable {
+    pub(super) fn with_gameobject_capacity(capacity: usize) -> ComponentTable {
         ComponentTable {
             gameobject_map: IdMap::with_capacity_and_hasher(capacity, NoOpHasherState),
             removed: Vec::with_capacity(capacity),
@@ -255,7 +255,7 @@ impl ComponentTable {
     /// Use this associated function if you have an estimation on how much
     /// `Component`s you are going to use.
     ///
-    pub fn with_components_capacity(capacity: usize) -> ComponentTable {
+    pub(super) fn with_components_capacity(capacity: usize) -> ComponentTable {
         ComponentTable {
             gameobject_map: IdMap::with_hasher(NoOpHasherState),
             removed: Vec::new(),
@@ -271,7 +271,7 @@ impl ComponentTable {
     /// Use this associated function if you have an estimation on how much
     /// `GameObject`s and `Component`s you are going to use.
     ///
-    pub fn with_gameobject_and_component_capacity(
+    pub(super) fn with_gameobject_and_component_capacity(
         gameobject_capacity: usize,
         component_capacity: usize,
     ) -> ComponentTable {
@@ -456,8 +456,6 @@ impl ComponentTable {
 
 #[cfg(test)]
 mod tests {
-    use crate::gamecore::storages::StoredComponent;
-
     #[test]
     fn component_map() {
         use super::ComponentMap;
