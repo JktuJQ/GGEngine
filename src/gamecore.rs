@@ -3,8 +3,9 @@
 //!
 
 // submodules and public re-exports
+mod storages;
+
 pub mod components;
 pub mod gameobjects;
 pub mod identifiers;
 pub mod scenes;
-pub mod storages;

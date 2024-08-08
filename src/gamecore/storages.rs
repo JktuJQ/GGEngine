@@ -1,4 +1,4 @@
-//! `gamecore::storages` submodule implements several collections that
+//! `gamecore::storages` hidden submodule implements several collections that
 //! are used to store ECS-related data for game engine.
 //!
 
@@ -69,7 +69,7 @@ type IdMap<K, V> = HashMap<K, V, NoOpHasherState>;
 /// This struct is a wrapper of `IdMap<TypeId, ComponentId>`.
 ///
 #[derive(Debug, Default)]
-pub struct ComponentMap {
+pub(super) struct ComponentMap {
     /// Map that binds `TypeId`s to `ComponentId`s.
     ///
     components: IdMap<TypeId, ComponentId>,
@@ -104,9 +104,9 @@ impl ComponentMap {
     /// # Complexity
     /// Insertion and lookup in the [`ComponentMap`] are both amortized `O(1)`.
     ///
-    pub fn get_or_insert<T: Component>(&mut self) -> ComponentId {
+    pub(super) fn get_or_insert<T: Component>(&mut self) -> ComponentId {
         let type_id: TypeId = TypeId::of::<T>();
-        let component_id: ComponentId = ComponentId::new(self.components.len());
+        let component_id: ComponentId = ComponentId::new(self.components.len() as u64);
         *self.components.entry(type_id).or_insert(component_id)
     }
     /// Removes `Component` type from [`ComponentMap`] and returns its previous `ComponentId`.
@@ -115,7 +115,7 @@ impl ComponentMap {
     /// # Complexity
     /// Removal in the [`ComponentMap`] is amortized `O(1)`.
     ///
-    pub fn remove<T: Component>(&mut self) -> Option<ComponentId> {
+    pub(super) fn remove<T: Component>(&mut self) -> Option<ComponentId> {
         self.components.remove(&TypeId::of::<T>())
     }
     /// Returns `ComponentId` that corresponds to `Component` type.
@@ -124,7 +124,7 @@ impl ComponentMap {
     /// # Complexity
     /// Lookup in the [`ComponentMap`] are both amortized `O(1)`.
     ///
-    pub fn get<T: Component>(&self) -> Option<ComponentId> {
+    pub(super) fn get<T: Component>(&self) -> Option<ComponentId> {
         self.components.get(&TypeId::of::<T>()).copied()
     }
 
@@ -133,17 +133,17 @@ impl ComponentMap {
     /// This number is a lower bound; the [`ComponentMap`] might be able to hold more,
     /// but is guaranteed to be able to hold at least this many.
     ///
-    pub fn capacity(&self) -> usize {
+    pub(super) fn capacity(&self) -> usize {
         self.components.capacity()
     }
     /// Returns the number of elements in the map.
     ///
-    pub fn len(&self) -> usize {
+    pub(super) fn len(&self) -> usize {
         self.components.len()
     }
     /// Returns `true` if the map contains no elements, otherwise `false`.
     ///
-    pub fn is_empty(&self) -> bool {
+    pub(super) fn is_empty(&self) -> bool {
         self.components.is_empty()
     }
 }
@@ -152,7 +152,7 @@ impl ComponentMap {
 ///
 /// This alias is frequently used in [`ComponentTable`] struct.
 ///
-pub type StoredComponent = Box<dyn Component>;
+pub(super) type StoredComponent = Box<dyn Component>;
 /// [`ComponentTable`] is a column-oriented structure-of-arrays based storage
 /// that maps `GameObject`s to their `Component`s.
 ///
@@ -184,7 +184,7 @@ pub type StoredComponent = Box<dyn Component>;
 /// To see more on complexity topic, you can read docs for corresponding methods.
 ///
 #[derive(Debug, Default)]
-pub struct ComponentTable {
+pub(super) struct ComponentTable {
     /// Map that tracks which position in table belongs to exact `GameObjectId`.
     ///
     /// Usage of this map and `removed` vector allows packing `GameObject`s in the table tightly,
@@ -221,37 +221,6 @@ impl ComponentTable {
             component_table: IdMap::with_hasher(NoOpHasherState),
         }
     }
-    /// Initializes [`ComponentTable`] with specified capacity for `GameObject` storage.
-    ///
-    /// `gameobject capacity` greatly affects table perfomance,
-    /// it can severely decrease number of allocations for insertions.
-    ///
-    /// Use this associated function if you have an estimation on how much
-    /// `GameObject`s you are going to use.
-    ///
-    pub(super) fn with_gameobject_capacity(capacity: usize) -> ComponentTable {
-        ComponentTable {
-            gameobject_map: IdMap::with_capacity_and_hasher(capacity, NoOpHasherState),
-            removed: Vec::with_capacity(capacity),
-
-            component_table: IdMap::with_hasher(NoOpHasherState),
-        }
-    }
-    /// Initializes [`ComponentTable`] with specified capacity for `Component` storage.
-    ///
-    /// `component capacity` affects table perfomance, but not as much as `gameobject capacity`.
-    ///
-    /// Use this associated function if you have an estimation on how much
-    /// `Component`s you are going to use.
-    ///
-    pub(super) fn with_components_capacity(capacity: usize) -> ComponentTable {
-        ComponentTable {
-            gameobject_map: IdMap::with_hasher(NoOpHasherState),
-            removed: Vec::new(),
-
-            component_table: IdMap::with_capacity_and_hasher(capacity, NoOpHasherState),
-        }
-    }
     /// Initializes [`ComponentTable`] with specified capacity for both `GameObject` and `Component` storage.
     ///
     /// Usage of this associated function should be preferred, because it can greatly increase perfomance
@@ -259,8 +228,9 @@ impl ComponentTable {
     ///
     /// Use this associated function if you have an estimation on how much
     /// `GameObject`s and `Component`s you are going to use.
+    /// If you are unsure of one of the capacities, pass 0 to it.
     ///
-    pub(super) fn with_gameobject_and_component_capacity(
+    pub(super) fn with_capacity(
         gameobject_capacity: usize,
         component_capacity: usize,
     ) -> ComponentTable {
@@ -284,7 +254,7 @@ impl ComponentTable {
     /// and insertion of this value in a map if it is not already present is amortized `O(1)`.
     /// Overall complexity is amortized `O(1)`.
     ///
-    pub fn insert_gameobject(&mut self, gameobject_id: GameObjectId) {
+    pub(super) fn insert_gameobject(&mut self, gameobject_id: GameObjectId) {
         let new_index: usize = self.removed.pop().unwrap_or(self.gameobject_count());
         let _ = self
             .gameobject_map
@@ -301,7 +271,7 @@ impl ComponentTable {
     /// so it is `O(self.component_count())`.
     /// Overall complexity is `O(self.component_count())`.
     ///
-    pub fn remove_gameobject(&mut self, gameobject_id: GameObjectId) {
+    pub(super) fn remove_gameobject(&mut self, gameobject_id: GameObjectId) {
         let Some(deleted_index) = self.gameobject_map.remove(&gameobject_id) else { return; };
         self.removed.push(deleted_index);
         for components in self.component_table.values_mut() {
@@ -319,7 +289,7 @@ impl ComponentTable {
     /// Insertion requires insertion to map which is amortized `O(1)`.
     /// Overall complexity is amortized `O(1)`.
     ///
-    pub fn insert_component(&mut self, component_id: ComponentId) {
+    pub(super) fn insert_component(&mut self, component_id: ComponentId) {
         let gameobjects: usize = self.gameobject_count();
         let gameobject_capacity: usize = self.gameobject_capacity();
         self.component_table
@@ -337,7 +307,7 @@ impl ComponentTable {
     /// and changing value in a vector which is `O(1)`.
     /// Overall complexity is amortized `O(1)`.
     ///
-    pub fn add_component_to_gameobject(
+    pub(super) fn add_component_to_gameobject(
         &mut self,
         component_id: ComponentId,
         component: StoredComponent,
@@ -360,7 +330,7 @@ impl ComponentTable {
     /// Removal requires removing key from map which is amortized `O(1)`.
     /// Overall complexity is amortized `O(1)`.
     ///
-    pub fn remove_component(&mut self, component_id: ComponentId) {
+    pub(super) fn remove_component(&mut self, component_id: ComponentId) {
         let _ = self.component_table.remove(&component_id);
     }
     /// Removes component from `GameObjectId` if both `GameObjectId` and `ComponentId` are tracked by [`ComponentTable`].
@@ -371,7 +341,7 @@ impl ComponentTable {
     /// and changing value in a vector which is `O(1)`.
     /// Overall complexity is amortized `O(1)`.
     ///
-    pub fn remove_component_from_gameobject(
+    pub(super) fn remove_component_from_gameobject(
         &mut self,
         component_id: ComponentId,
         gameobject_id: GameObjectId,
@@ -390,7 +360,7 @@ impl ComponentTable {
     /// and retrieving value from a vector which is `O(1)`.
     /// Overall complexity is amortized `O(1)`.
     ///    
-    pub fn get_gameobject_component(
+    pub(super) fn get_gameobject_component(
         &self,
         gameobject_id: GameObjectId,
         component_id: ComponentId,
@@ -408,7 +378,7 @@ impl ComponentTable {
     /// This number is a lower bound; the [`ComponentTable`] might be able to hold more,
     /// but is guaranteed to be able to hold at least this many.
     ///     
-    pub fn gameobject_capacity(&self) -> usize {
+    pub(super) fn gameobject_capacity(&self) -> usize {
         self.gameobject_map.capacity()
     }
     /// Returns the number of `Component`s the table can hold without reallocating.
@@ -416,29 +386,29 @@ impl ComponentTable {
     /// This number is a lower bound; the [`ComponentTable`] might be able to hold more,
     /// but is guaranteed to be able to hold at least this many.
     ///
-    pub fn component_capacity(&self) -> usize {
+    pub(super) fn component_capacity(&self) -> usize {
         self.component_table.capacity()
     }
 
     /// Returns the number of `GameObject`s in the map.
     ///
-    pub fn gameobject_count(&self) -> usize {
+    pub(super) fn gameobject_count(&self) -> usize {
         self.gameobject_map.len()
     }
     /// Returns the number of `Component`s in the map.
     ///
-    pub fn component_count(&self) -> usize {
+    pub(super) fn component_count(&self) -> usize {
         self.component_table.len()
     }
 
     /// Checks whether given `GameObjectId` is tracked by [`ComponentTable`] or not.
     ///
-    pub fn has_gameobject(&self, gameobject_id: GameObjectId) -> bool {
+    pub(super) fn has_gameobject(&self, gameobject_id: GameObjectId) -> bool {
         self.gameobject_map.contains_key(&gameobject_id)
     }
     /// Checks whether given `ComponentId` is tracked by [`ComponentTable`] or not.
     ///
-    pub fn has_component(&self, component_id: ComponentId) -> bool {
+    pub(super) fn has_component(&self, component_id: ComponentId) -> bool {
         self.component_table.contains_key(&component_id)
     }
 }
