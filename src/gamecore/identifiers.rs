@@ -13,13 +13,13 @@ macro_rules! impl_id {
         impl $struct {
             /// Creates new id with given value.
             ///
-            pub(crate) fn new(id: usize) -> Self {
+            pub(crate) fn new(id: u64) -> Self {
                 Self(id)
             }
 
             /// Returns underlying id.
             ///
-            pub fn value(&self) -> usize {
+            pub fn value(&self) -> u64 {
                 self.0
             }
         }
@@ -34,7 +34,7 @@ macro_rules! impl_id {
 /// this [`Component`](super::components::Component) is registered.
 ///
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ComponentId(usize);
+pub struct ComponentId(u64);
 impl_id!(ComponentId);
 
 /// [`GameObjectId`] id struct is needed to identify [`GameObject`](super::gameobjects::GameObject)s
@@ -44,5 +44,5 @@ impl_id!(ComponentId);
 /// [`GameObject`](super::gameobjects::GameObject) is registered.
 ///
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GameObjectId(usize);
+pub struct GameObjectId(u64);
 impl_id!(GameObjectId);

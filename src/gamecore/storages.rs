@@ -19,37 +19,26 @@ use std::{
 /// ECS model heavily relies on fast querying and indexation of
 /// [`Component`](super::components::Component)s and [`GameObject`](super::gameobjects::GameObject)s.
 /// Id structs are indices for navigating their counterparts in [`Scene`](super::scenes::Scene) storage,
-/// and those are implemented as newtype-wrappers of `usize`.
+/// and those are implemented as newtype-wrappers of `u64`.
 ///
-/// This hasher allows for those `usize`s to be used as keys in collections that require hashing
+/// This hasher allows for those `u64`s to be used as keys in collections that require hashing
 /// but without overhead of hashing. Those indices are already high-quality hashes because their
 /// uniqueness is ensured, so this `Hasher` implementation can give an actual performance boost.
 ///
-/// [`NoOpHasher`] also passes `u64` without hashing
-/// (but still conversion to `usize` has to be made).
-/// That is made to target `TypeId` struct and map it to ids.
-///
-/// **This hasher only passes `usize` and `u64` as a no-op hashing,
-/// `write` function should not be used (it's implementation is not suited for usage);
-/// use `write_usize` or `write_u64` instead.**
+/// **This hasher only passes `u64` as a no-op hashing, `write` function will panic. **
 ///
 #[derive(Copy, Clone, Debug, Default)]
-struct NoOpHasher(usize);
+struct NoOpHasher(u64);
 impl Hasher for NoOpHasher {
     fn finish(&self) -> u64 {
-        self.0 as u64
+        self.0
     }
 
-    fn write(&mut self, bytes: &[u8]) {
-        self.0 = bytes.iter().fold(self.0, |hash, x| {
-            hash.rotate_right(8).wrapping_add(*x as usize)
-        })
+    fn write(&mut self, _bytes: &[u8]) {
+        panic!("`write` method should not be used on `NoOpHasher`.");
     }
 
     fn write_u64(&mut self, i: u64) {
-        self.0 = i as usize;
-    }
-    fn write_usize(&mut self, i: usize) {
         self.0 = i;
     }
 }
