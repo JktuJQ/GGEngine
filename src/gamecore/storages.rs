@@ -3,7 +3,7 @@
 //!
 
 use crate::gamecore::{
-    components::Component,
+    components::{BoxedComponent, Component},
     identifiers::{ComponentId, GameObjectId},
 };
 use std::{
@@ -148,11 +148,6 @@ impl ComponentMap {
     }
 }
 
-/// Type alias for `Box<dyn Component>`.
-///
-/// This alias is frequently used in [`ComponentTable`] struct.
-///
-pub(super) type StoredComponent = Box<dyn Component>;
 /// [`ComponentTable`] is a column-oriented structure-of-arrays based storage
 /// that maps `GameObject`s to their `Component`s.
 ///
@@ -201,7 +196,7 @@ pub(super) struct ComponentTable {
 
     /// Table that holds all components.
     ///
-    component_table: IdMap<ComponentId, Vec<Option<StoredComponent>>>,
+    component_table: IdMap<ComponentId, Vec<Option<BoxedComponent>>>,
 }
 impl ComponentTable {
     /// Initializes new [`ComponentTable`].
@@ -310,7 +305,7 @@ impl ComponentTable {
     pub(super) fn add_component_to_gameobject(
         &mut self,
         component_id: ComponentId,
-        component: StoredComponent,
+        component: BoxedComponent,
         gameobject_id: GameObjectId,
     ) {
         let Some(&gameobject_index) = self.gameobject_map.get(&gameobject_id) else { return; };
@@ -319,7 +314,7 @@ impl ComponentTable {
             components.resize_with(gameobject_index + 1, || None);
         }
 
-        let place: &mut Option<StoredComponent> = components
+        let place: &mut Option<BoxedComponent> = components
             .get_mut(gameobject_index)
             .expect("Existence of index has been ensured.");
         *place = Some(component);
@@ -364,7 +359,7 @@ impl ComponentTable {
         &self,
         gameobject_id: GameObjectId,
         component_id: ComponentId,
-    ) -> Option<&Option<StoredComponent>> {
+    ) -> Option<&Option<BoxedComponent>> {
         let Some(&gameobject_index) = self.gameobject_map.get(&gameobject_id) else { return None; };
         let Some(components) = self.component_table.get(&component_id) else { return None; };
         Some(match components.get(gameobject_index) {
@@ -439,8 +434,8 @@ mod tests {
 
     #[test]
     fn component_table() {
-        use super::{ComponentTable, StoredComponent};
-        use crate::gamecore::identifiers::{ComponentId, GameObjectId};
+        use super::{BoxedComponent, ComponentTable};
+        use crate::gamecore::{components::Component, identifiers::{ComponentId, GameObjectId}};
         use std::ops::Deref;
 
         let gameobject_id0: GameObjectId = GameObjectId::new(0);
@@ -448,8 +443,10 @@ mod tests {
 
         let component_id0: ComponentId = ComponentId::new(0);
         const COMPONENT0: u8 = 0;
+        impl Component for u8 {}
         let component_id1: ComponentId = ComponentId::new(1);
         const COMPONENT1: i8 = 0;
+        impl Component for i8 {}
 
         let mut component_table: ComponentTable = ComponentTable::new();
 
@@ -481,10 +478,10 @@ mod tests {
             Box::new(COMPONENT0),
             gameobject_id0,
         );
-        let retrieval: &Option<StoredComponent> = component_table
+        let retrieval: &Option<BoxedComponent> = component_table
             .get_gameobject_component(gameobject_id0, component_id0)
             .expect("Component was added.");
-        let retrieved_component: &StoredComponent =
+        let retrieved_component: &BoxedComponent =
             retrieval.as_ref().expect("Component was added.");
         assert_eq!(
             retrieved_component
