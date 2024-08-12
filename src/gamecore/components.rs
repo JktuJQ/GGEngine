@@ -14,17 +14,17 @@ use std::{
 ///
 /// Currently, trait upcasting is not stable,
 /// but it is needed to properly use runtime reflection
-/// (convert `&dyn Component` to `&dyn Any`).
+/// (convert `&dyn Component`/`&dyn Resource` to `&dyn Any`).
 /// Workaround is implemented in `AsAny` trait.
 ///
 /// # Note
-/// Although `as_any` method could belong to the [`Component`] trait itself,
+/// Although `as_any` method could belong to the [`Component`]/[`Resource`] trait itself,
 /// it would not fit ECS component meaning (even if it was hidden in docs)
 /// and also would require for users to manually implement it (even if it is trivial),
 /// so it is instead moved to the hidden trait.
 /// This approach also helps mantaining SemVer compatibility. When trait upcasting
 /// will be implemented, there will be no use for `as_any` method and it removing it
-/// would break compatibility (if `as_any` belonged to [`Component`] trait), but
+/// would break compatibility (if `as_any` belonged to [`Component`]/[`Resource`] trait), but
 /// current implementation would allow to just delete `AsAny` trait completely
 /// without breaking compatibility.
 ///
@@ -56,12 +56,16 @@ pub(in crate::gamecore) mod as_any {
 /// ECS pattern encourages clean, decoupled design that
 /// splits up your app data and logic into its core components.
 ///
+/// `ggengine` supports having only one component of each type binded to `GameObject`.
+/// Trying to add two components of one type to `GameObject` could lead to unexpected
+/// behaviour, as `GameObject` will only use the latest component.
+///
 /// # Implementation
 /// [`Component`] trait requires `'static` trait bound, because `Any`
 /// is a supertrait of [`Component`] trait and it requires `'static` trait bound.
 ///
 /// There is also `AsAny` supertrait which may seem a 'seal' trait
-/// that would forbid any external implementations - but it is not!
+/// that would forbid any external implementations - but it is not.
 /// `AsAny` trait has blanket implementation for every type that has `Any` implemented
 /// and so it is not a constraint at all.
 /// That why implementing [`Component`] trait is so easy:
@@ -139,6 +143,13 @@ pub type BoxedComponent = Box<dyn Component>;
 /// [`Bundle`] trait provides a way to create a set of [`Component`]s that are coupled
 /// by some logic and it just makes sense to use them together.
 ///
+/// [`Bundle`]s are only a convenient way to group [`Component`]s in a set, and they should
+/// not be used as units of behaviour. That is because multiple bundles could contains
+/// the same [`Component`] type, and adding both of them to one `GameObject` would
+/// lead to unexpected behaviour (see [`Component`] trait docs).
+/// For this reason it is impossible to use [`Bundle`] for querying. Instead, you should
+/// operate on [`Component`]s which define your game logic, querying those you need to use.
+///
 /// # Examples
 /// Every [`Component`] is a [`Bundle`], because [`Component`] is basically a set (bundle) of one component.
 /// Additionally, tuples of [`Bundle`]s are also [`Bundle`] (with up to 12 items,
@@ -148,7 +159,7 @@ pub type BoxedComponent = Box<dyn Component>;
 ///
 /// ```rust
 /// # use ggengine::gamecore::components::Component;
-/// 
+///
 /// #[derive(Default)]
 /// struct Player;
 /// impl Component for Player {}
@@ -186,7 +197,7 @@ pub type BoxedComponent = Box<dyn Component>;
 /// #     y: f32,
 /// # }
 /// # impl Component for Position {}
-/// # 
+/// #
 /// type PlayerBundle = (Player, Name, Position);
 ///
 /// let player: PlayerBundle = Default::default();
@@ -214,7 +225,7 @@ pub type BoxedComponent = Box<dyn Component>;
 /// #     y: f32,
 /// # }
 /// # impl Component for Position {}
-/// # 
+/// #
 /// type PlayerBundle = (Player, Name, Position);
 /// trait WithName {
 ///     fn with_name(name: String) -> Self;
@@ -249,7 +260,7 @@ pub type BoxedComponent = Box<dyn Component>;
 /// #     y: f32,
 /// # }
 /// # impl Component for Position {}
-/// # 
+/// #
 /// #[derive(Default)]
 /// struct PlayerBundle {
 ///     player: Player,
@@ -282,8 +293,7 @@ pub type BoxedComponent = Box<dyn Component>;
 /// is not as inefficient as `Vec` implementation would be.
 ///
 /// The choice between `LinkedList` and `Vec` boils down to following 2 points:
-/// 1.
-/// Recursive flattening of bundles requires creation of many single-item
+/// 1. Recursive flattening of bundles requires creation of many single-item
 /// lists and multiple concatenations of those. `LinkedList` is perfectly
 /// suited for it, because `LinkedList` struct itself is just a node and
 /// concatenation of `LinkedList`s is very fast.
@@ -292,8 +302,7 @@ pub type BoxedComponent = Box<dyn Component>;
 /// and then works with allocated memory.
 /// That does not work when we are concatenating multiple single-item lists,
 /// and it may even overallocate (we need space for only one component for single-item lists).
-/// 2.
-/// Cache locality in `Vec` and absence of it in `LinkedList` is a important aspect
+/// 2. Cache locality in `Vec` and absence of it in `LinkedList` is a important aspect
 /// to consider when it comes to perfomance. `Vec` is faster than `LinkedList`,
 /// but the only thing that happens to collection that represents unpacked bundle
 /// is that it is traversed once to assign all [`Component`]s to `GameObject`.
@@ -359,3 +368,41 @@ impl_bundle!(
     (T10, 1),
     (T11, 0),
 );
+
+/// [`Resource`] trait defines unique global data that is bounded to the `Scene`.
+///
+/// [`Resource`]s are very similar to [`Component`]s, with the only difference is that
+/// [`Component`]s are bounded to `GameObject`s and [`Resource`]s are bound to the `Scene`.
+///
+/// Applications often have some global data that they share, it could be time, score, asset collection, etc.
+/// Although global resources could be implemented as components that belong to some 'global' gameobject,
+/// that would be confusing and would not convey intention logic.
+/// [`Resource`] trait supports this pattern, enforcing it through type system and allowing
+/// for data to be shared easily.
+///
+/// # Implementation
+/// [`Resource`] trait requires `'static` trait bound, because `Any`
+/// is a supertrait of [`Resource`] trait and it requires `'static` trait bound.
+///
+/// There is also `AsAny` supertrait which may seem a 'seal' trait
+/// that would forbid any external implementations - but it is not.
+/// `AsAny` trait has blanket implementation for every type that has `Any` implemented
+/// and so it is not a constraint at all.
+/// That why implementing [`Resource`] trait is so easy:
+///
+/// ```rust
+/// use ggengine::gamecore::components::Resource;
+/// struct T;
+/// impl Resource for T {}
+/// ```
+///
+/// Considering that [`Resource`] is basically a [`Component`], almost everything
+/// that goes for [`Component`]s is also true for [`Resource`]s.
+/// To further understand relations between those traits, it is encouraged to read docs for submodule items.
+///
+pub trait Resource: Any + as_any::AsAny {}
+impl fmt::Debug for dyn Resource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "dyn Resource ({:?})", type_name::<Self>())
+    }
+}
