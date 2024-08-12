@@ -68,7 +68,8 @@ pub(in crate::gamecore) mod as_any {
 /// that would forbid any external implementations - but it is not.
 /// `AsAny` trait has blanket implementation for every type that has `Any` implemented
 /// and so it is not a constraint at all.
-/// That why implementing [`Component`] trait is so easy:
+/// 
+/// That is why implementing [`Component`] trait is so easy:
 ///
 /// ```rust
 /// use ggengine::gamecore::components::Component;
@@ -151,15 +152,15 @@ pub type BoxedComponent = Box<dyn Component>;
 /// operate on [`Component`]s which define your game logic, querying those you need to use.
 ///
 /// # Examples
-/// Every [`Component`] is a [`Bundle`], because [`Component`] is basically a set (bundle) of one component.
-/// Additionally, tuples of [`Bundle`]s are also [`Bundle`] (with up to 12 items,
+/// Every [`Component`] is a [`Bundle`], because component is basically a set (bundle) of one component.
+/// Additionally, tuples of bundles are also [`Bundle`] (with up to 12 items,
 /// but those tuples can be nested, which practically removes that bound).
 /// That allows coupling necessary components in a [`Bundle`], for example to
 /// define a `PlayerBundle` that contains components that describe a player.
 ///
 /// ```rust
 /// # use ggengine::gamecore::components::Component;
-///
+/// #
 /// #[derive(Default)]
 /// struct Player;
 /// impl Component for Player {}
@@ -203,7 +204,7 @@ pub type BoxedComponent = Box<dyn Component>;
 /// let player: PlayerBundle = Default::default();
 /// ```
 /// However, tuples do no support the struct update syntax
-/// and for the most cases, their initialization is inconvenient.
+/// and for complex cases, their initialization is inconvenient.
 ///
 /// That is where you have two options.
 /// 1. You can use extension trait pattern to define constructors
@@ -227,6 +228,7 @@ pub type BoxedComponent = Box<dyn Component>;
 /// # impl Component for Position {}
 /// #
 /// type PlayerBundle = (Player, Name, Position);
+/// 
 /// trait WithName {
 ///     fn with_name(name: String) -> Self;
 /// }
@@ -241,7 +243,7 @@ pub type BoxedComponent = Box<dyn Component>;
 /// let player: PlayerBundle = PlayerBundle::with_name("Player".to_string());
 /// ```
 /// 2. You can implement [`Bundle`] trait manually.
-/// You may try to use provided implementations to construct your own:
+/// You may even try to leverage provided implementations to construct your own:
 /// ```rust
 /// # use ggengine::gamecore::components::{Bundle, Component, BoxedComponent};
 /// # use std::collections::LinkedList;
@@ -292,7 +294,7 @@ pub type BoxedComponent = Box<dyn Component>;
 /// already flattened and then concatenation of those lists
 /// is not as inefficient as `Vec` implementation would be.
 ///
-/// The choice between `LinkedList` and `Vec` boils down to following 2 points:
+/// The choice between `LinkedList` and `Vec` boils down to the following 2 points:
 /// 1. Recursive flattening of bundles requires creation of many single-item
 /// lists and multiple concatenations of those. `LinkedList` is perfectly
 /// suited for it, because `LinkedList` struct itself is just a node and
@@ -300,8 +302,8 @@ pub type BoxedComponent = Box<dyn Component>;
 /// One of the advantages of `Vec` is that it performs one big allocation
 /// (which is better than doing multiple small allocations)
 /// and then works with allocated memory.
-/// That does not work when we are concatenating multiple single-item lists,
-/// and it may even overallocate (we need space for only one component for single-item lists).
+/// That does not work when we are concatenating multiple single-item lists, and it may even overallocate 
+/// (we need space for only one component for single-item lists, but we need more when we concatenate).
 /// 2. Cache locality in `Vec` and absence of it in `LinkedList` is a important aspect
 /// to consider when it comes to perfomance. `Vec` is faster than `LinkedList`,
 /// but the only thing that happens to collection that represents unpacked bundle
@@ -388,7 +390,8 @@ impl_bundle!(
 /// that would forbid any external implementations - but it is not.
 /// `AsAny` trait has blanket implementation for every type that has `Any` implemented
 /// and so it is not a constraint at all.
-/// That why implementing [`Resource`] trait is so easy:
+/// 
+/// That is why implementing [`Resource`] trait is so easy:
 ///
 /// ```rust
 /// use ggengine::gamecore::components::Resource;
