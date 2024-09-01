@@ -22,7 +22,7 @@ use std::{
 /// it would not fit ECS component meaning (even if it was hidden in docs)
 /// and also would require for users to manually implement it (even if it is trivial),
 /// so it is instead moved to the hidden trait.
-/// This approach also helps mantaining SemVer compatibility. When trait upcasting
+/// This approach also helps to maintain SemVer compatibility. When trait upcasting
 /// will be implemented, there will be no use for `as_any` method and it removing it
 /// would break compatibility (if `as_any` belonged to [`Component`]/[`Resource`] trait), but
 /// current implementation would allow to just delete `AsAny` trait completely
@@ -62,13 +62,13 @@ pub(in crate::gamecore) mod as_any {
 ///
 /// # Implementation
 /// [`Component`] trait requires `'static` trait bound, because `Any`
-/// is a supertrait of [`Component`] trait and it requires `'static` trait bound.
+/// is a supertrait of [`Component`] trait, and it requires `'static` trait bound.
 ///
 /// There is also `AsAny` supertrait which may seem a 'seal' trait
 /// that would forbid any external implementations - but it is not.
 /// `AsAny` trait has blanket implementation for every type that has `Any` implemented
 /// and so it is not a constraint at all.
-/// 
+///
 /// That is why implementing [`Component`] trait is so easy:
 ///
 /// ```rust
@@ -84,7 +84,6 @@ pub(in crate::gamecore) mod as_any {
 ///
 /// ```rust
 /// # use ggengine::gamecore::components::Component;
-///
 /// struct Player;
 /// impl Component for Player {}
 ///
@@ -121,13 +120,12 @@ impl fmt::Debug for dyn Component {
         write!(f, "dyn Component ({:?})", type_name::<Self>())
     }
 }
-
 /// Type alias for `Box<dyn Component>`.
 ///
 /// This type alias will be frequently used in situations in which
 /// ownership of components is needed.
 ///
-/// Internally `ggengine` has to operate with trait objects and
+/// Internally `ggengine` has to operate with trait objects, and
 /// they need to be boxed, because ownership is required.
 /// Passing single component is trivial: `ggengine` will just ask for
 /// `T: Component` and construct [`BoxedComponent`] by itself.
@@ -142,12 +140,13 @@ pub type BoxedComponent = Box<dyn Component>;
 ///
 /// In ECS, components define objects and systems operate on combinations of components.
 /// [`Bundle`] trait provides a way to create a set of [`Component`]s that are coupled
-/// by some logic and it just makes sense to use them together.
+/// by some logic, and it just makes sense to use those together.
 ///
-/// [`Bundle`]s are only a convenient way to group [`Component`]s in a set, and they should
-/// not be used as units of behaviour. That is because multiple bundles could contains
-/// the same [`Component`] type, and adding both of them to one `GameObject` would
-/// lead to unexpected behaviour (see [`Component`] trait docs).
+/// Bundles are only a convenient way to group components in a set, and they should
+/// not be used as units of behaviour. That is because multiple bundles could contain
+/// the same [`Component`] type, and adding both of them to one
+/// [`GameObject`](super::gameobjects::GameObject) would lead to unexpected behaviour
+/// (see [`Component`] trait docs).
 /// For this reason it is impossible to use [`Bundle`] for querying. Instead, you should
 /// operate on [`Component`]s which define your game logic, querying those you need to use.
 ///
@@ -155,8 +154,9 @@ pub type BoxedComponent = Box<dyn Component>;
 /// Every [`Component`] is a [`Bundle`], because component is basically a set (bundle) of one component.
 /// Additionally, tuples of bundles are also [`Bundle`] (with up to 12 items,
 /// but those tuples can be nested, which practically removes that bound).
-/// That allows coupling necessary components in a [`Bundle`], for example to
-/// define a `PlayerBundle` that contains components that describe a player.
+/// This allows you to combine the necessary components into a [`Bundle`],
+/// for example defining a PlayerBundle containing components that describe the player
+/// can be written as follows:
 ///
 /// ```rust
 /// # use ggengine::gamecore::components::Component;
@@ -203,7 +203,7 @@ pub type BoxedComponent = Box<dyn Component>;
 ///
 /// let player: PlayerBundle = Default::default();
 /// ```
-/// However, tuples do no support the struct update syntax
+/// However, tuples do not support the struct update syntax
 /// and for complex cases, their initialization is inconvenient.
 ///
 /// That is where you have two options.
@@ -228,7 +228,7 @@ pub type BoxedComponent = Box<dyn Component>;
 /// # impl Component for Position {}
 /// #
 /// type PlayerBundle = (Player, Name, Position);
-/// 
+///
 /// trait WithName {
 ///     fn with_name(name: String) -> Self;
 /// }
@@ -268,7 +268,7 @@ pub type BoxedComponent = Box<dyn Component>;
 ///     player: Player,
 ///     name: Name,
 ///     position: Position,
-/// };
+/// }
 /// impl Bundle for PlayerBundle {
 ///     fn components(self) -> LinkedList<BoxedComponent> {
 ///         (self.player, self.name, self.position).components()
@@ -284,7 +284,7 @@ pub type BoxedComponent = Box<dyn Component>;
 /// and just 'pack a bundle' at the very end.
 ///
 /// # Note
-/// You may noticed that return type of `Bundle::components` is `LinkedList` struct.
+/// You may notice that return type of `Bundle::components` is `LinkedList` struct.
 /// That is because `ggengine` recursively flattens all nested
 /// bundles to one, and the nature of `LinkedList` allows
 /// easy list concatenation without any amortization.
@@ -302,20 +302,20 @@ pub type BoxedComponent = Box<dyn Component>;
 /// One of the advantages of `Vec` is that it performs one big allocation
 /// (which is better than doing multiple small allocations)
 /// and then works with allocated memory.
-/// That does not work when we are concatenating multiple single-item lists, and it may even overallocate 
+/// That does not work when we are concatenating multiple single-item lists, and it may even overallocate
 /// (we need space for only one component for single-item lists, but we need more when we concatenate).
-/// 2. Cache locality in `Vec` and absence of it in `LinkedList` is a important aspect
-/// to consider when it comes to perfomance. `Vec` is faster than `LinkedList`,
+/// 2. Cache locality in `Vec` and absence of it in `LinkedList` is an important aspect
+/// to consider when it comes to performance. `Vec` is faster than `LinkedList`,
 /// but the only thing that happens to collection that represents unpacked bundle
-/// is that it is traversed once to assign all [`Component`]s to `GameObject`.
-/// Considering that bundles are usually not very big, there is no significant perfomance gain
+/// is that it is traversed once to assign all components to `GameObject`.
+/// Considering that bundles are usually not very big, there is no significant performance gain
 /// of `Vec`.
 ///
 /// In summary, although `LinkedList` is inferior to `Vec` in most of the cases,
 /// its usage is justified for [`Bundle`]:
 /// nature of `LinkedList` is suited for creation of multiple single-item lists (nodes)
-/// and for concatenating them, and perfomance gains of `Vec` are not significant in
-/// most of use cases.
+/// and for concatenating them, and performance gains of `Vec` are not significant in
+/// most of the use cases.
 /// Ergonomics of `LinkedList` fit [`Bundle`] use case, and that is why
 /// it has been chosen.
 ///
@@ -384,13 +384,13 @@ impl_bundle!(
 ///
 /// # Implementation
 /// [`Resource`] trait requires `'static` trait bound, because `Any`
-/// is a supertrait of [`Resource`] trait and it requires `'static` trait bound.
+/// is a supertrait of [`Resource`] trait, and it requires `'static` trait bound.
 ///
 /// There is also `AsAny` supertrait which may seem a 'seal' trait
 /// that would forbid any external implementations - but it is not.
 /// `AsAny` trait has blanket implementation for every type that has `Any` implemented
 /// and so it is not a constraint at all.
-/// 
+///
 /// That is why implementing [`Resource`] trait is so easy:
 ///
 /// ```rust
@@ -409,3 +409,17 @@ impl fmt::Debug for dyn Resource {
         write!(f, "dyn Resource ({:?})", type_name::<Self>())
     }
 }
+/// Type alias for `Box<dyn Resource>`.
+///
+/// This type alias will be frequently used in situations in which
+/// ownership of resource is needed.
+///
+/// Internally `ggengine` has to operate with trait objects, and
+/// they need to be boxed, because ownership is required.
+/// Passing single resource is trivial: `ggengine` will just ask for
+/// `T: Resource` and construct [`BoxedResource`] by itself.
+/// On the other hand, passing multiple resources
+/// is not as easy, because caller will need to construct [`BoxedResource`]s manually.
+/// That may be inconvenient, but `ggengine` does its best to abstract that away.
+///
+pub type BoxedResource = Box<dyn Resource>;

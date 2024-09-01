@@ -17,7 +17,7 @@ use std::{
 ///
 /// # Usage
 /// ECS model heavily relies on fast querying and indexation of
-/// [`Component`](super::components::Component)s and [`GameObject`](super::gameobjects::GameObject)s.
+/// [`Component`](Component)s and [`GameObject`](super::gameobjects::GameObject)s.
 /// Id structs are indices for navigating their counterparts in [`Scene`](super::scenes::Scene) storage,
 /// and those are implemented as newtype-wrappers of `u64`.
 ///
@@ -162,7 +162,7 @@ impl ComponentMap {
 /// Fetching components from a table involves fetching the associated column for a `Component` type
 /// (via its `ComponentId`), then fetching the `GameObject`'s row within that column.
 ///
-/// # Perfomance
+/// # Performance
 /// [`ComponentTable`]'s maps use [`NoOpHasher`], because ids are reliable hashes due to implementation.
 /// This speeds up those 'amortized `O(1)`' even more.
 ///
@@ -205,7 +205,7 @@ impl ComponentTable {
     ///
     /// If you know how much `Component`s and `GameObject`s you are going to use,
     /// use methods that initialize [`ComponentTable`] with capacity.
-    /// That could greatly increase perfomance, especially if [`ComponentTable`]
+    /// That could greatly increase performance, especially if [`ComponentTable`]
     /// will need to handle frequent insertions and deletions.
     ///
     pub(super) fn new() -> ComponentTable {
@@ -218,7 +218,7 @@ impl ComponentTable {
     }
     /// Initializes [`ComponentTable`] with specified capacity for both `GameObject` and `Component` storage.
     ///
-    /// Usage of this associated function should be preferred, because it can greatly increase perfomance
+    /// Usage of this associated function should be preferred, because it can greatly increase performance
     /// by decreasing number of allocations.
     ///
     /// Use this associated function if you have an estimation on how much
@@ -267,7 +267,9 @@ impl ComponentTable {
     /// Overall complexity is `O(self.component_count())`.
     ///
     pub(super) fn remove_gameobject(&mut self, gameobject_id: GameObjectId) {
-        let Some(deleted_index) = self.gameobject_map.remove(&gameobject_id) else { return; };
+        let Some(deleted_index) = self.gameobject_map.remove(&gameobject_id) else {
+            return;
+        };
         self.removed.push(deleted_index);
         for components in self.component_table.values_mut() {
             if let Some(component) = components.get_mut(deleted_index) {
@@ -308,8 +310,12 @@ impl ComponentTable {
         component: BoxedComponent,
         gameobject_id: GameObjectId,
     ) {
-        let Some(&gameobject_index) = self.gameobject_map.get(&gameobject_id) else { return; };
-        let Some(components) = self.component_table.get_mut(&component_id) else { return; };
+        let Some(&gameobject_index) = self.gameobject_map.get(&gameobject_id) else {
+            return;
+        };
+        let Some(components) = self.component_table.get_mut(&component_id) else {
+            return;
+        };
         if gameobject_index >= components.len() {
             components.resize_with(gameobject_index + 1, || None);
         }
@@ -341,9 +347,15 @@ impl ComponentTable {
         component_id: ComponentId,
         gameobject_id: GameObjectId,
     ) {
-        let Some(&gameobject_index) = self.gameobject_map.get(&gameobject_id) else { return; };
-        let Some(components) = self.component_table.get_mut(&component_id) else { return; };
-        let Some(component) = components.get_mut(gameobject_index) else { return; };
+        let Some(&gameobject_index) = self.gameobject_map.get(&gameobject_id) else {
+            return;
+        };
+        let Some(components) = self.component_table.get_mut(&component_id) else {
+            return;
+        };
+        let Some(component) = components.get_mut(gameobject_index) else {
+            return;
+        };
         *component = None;
     }
 
@@ -360,12 +372,9 @@ impl ComponentTable {
         gameobject_id: GameObjectId,
         component_id: ComponentId,
     ) -> Option<&Option<BoxedComponent>> {
-        let Some(&gameobject_index) = self.gameobject_map.get(&gameobject_id) else { return None; };
-        let Some(components) = self.component_table.get(&component_id) else { return None; };
-        Some(match components.get(gameobject_index) {
-            Some(inner) => inner,
-            None => &None,
-        })
+        let gameobject_index: &usize = self.gameobject_map.get(&gameobject_id)?;
+        let components: &Vec<Option<BoxedComponent>> = self.component_table.get(&component_id)?;
+        Some(components.get(*gameobject_index).unwrap_or_else(|| &None))
     }
 
     /// Returns the number of `GameObject`s the table can hold without reallocating.
@@ -435,7 +444,10 @@ mod tests {
     #[test]
     fn component_table() {
         use super::{BoxedComponent, ComponentTable};
-        use crate::gamecore::{components::Component, identifiers::{ComponentId, GameObjectId}};
+        use crate::gamecore::{
+            components::Component,
+            identifiers::{ComponentId, GameObjectId},
+        };
         use std::ops::Deref;
 
         let gameobject_id0: GameObjectId = GameObjectId::new(0);
