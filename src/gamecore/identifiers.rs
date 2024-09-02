@@ -37,11 +37,21 @@ macro_rules! impl_id {
 pub struct ComponentId(u64);
 impl_id!(ComponentId);
 
+/// [`ResourceId`] id struct is needed to identify [`Resource`](super::components::Resource)s
+/// in [`Scene`](super::scenes::Scene).
+///
+/// It is assigned by the [`Scene`](super::scenes::Scene) in which
+/// this [`Resource`](super::components::Component) is registered.
+///
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ResourceId(u64);
+impl_id!(ResourceId);
+
 /// [`GameObjectId`] id struct is needed to identify [`GameObject`](super::gameobjects::GameObject)s
 /// in [`Scene`](super::scenes::Scene).
 ///
 /// It is assigned by the [`Scene`](super::scenes::Scene) in which
-/// [`GameObject`](super::gameobjects::GameObject) is registered.
+/// this [`GameObject`](super::gameobjects::GameObject) is registered.
 ///
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GameObjectId(u64);

@@ -3,8 +3,8 @@
 //!
 
 use crate::gamecore::{
-    components::{BoxedComponent, Component},
-    identifiers::{ComponentId, GameObjectId},
+    components::{BoxedComponent, Component, Resource},
+    identifiers::{ComponentId, GameObjectId, ResourceId},
 };
 use std::{
     any::TypeId,
@@ -63,90 +63,109 @@ impl BuildHasher for NoOpHasherState {
 ///
 type IdMap<K, V> = HashMap<K, V, NoOpHasherState>;
 
+/// [`impl_type_map`] macro implements maps that bind `TypeId`s to id structs.
+///
+/// Maps must have `map` field.
+///
+macro_rules! impl_type_map {
+    ($struct:ident, $type:ident, $id:ident) => {
+        impl $struct {
+            /// Initializes an empty map that uses [`NoOpHasher`] internally.
+            ///
+            /// The map is initially created with a capacity of 0,
+            /// so it will not allocate until it is first inserted into.
+            ///
+            pub(super) fn new() -> Self {
+                Self {
+                    map: IdMap::with_hasher(NoOpHasherState),
+                }
+            }
+            /// Initializes an empty map that uses [`NoOpHasher`] internally
+            /// with at least the specified capacity.
+            ///
+            /// The map will be able to hold at least `capacity` elements without reallocating.
+            /// This method is allowed to allocate for more elements than `capacity`.
+            /// If `capacity` is 0, it will not allocate.
+            ///
+            pub(super) fn with_capacity(capacity: usize) -> Self {
+                Self {
+                    map: IdMap::with_capacity_and_hasher(capacity, NoOpHasherState),
+                }
+            }
+
+            /// Initializes given type in the map and returns assigned id.
+            /// If `Component` was already initialized it returns `ComponentId` that was assigned previously.
+            ///
+            /// # Complexity
+            /// Insertion and lookup in the map are both amortized `O(1)`.
+            ///
+            pub(super) fn get_or_insert<T: $type>(&mut self) -> $id {
+                let type_id: TypeId = TypeId::of::<T>();
+                let id: $id = $id::new(self.map.len() as u64);
+                *self.map.entry(type_id).or_insert(id)
+            }
+            /// Removes given type from map and returns its previous id.
+            /// If this type was not initialized, returns `None`.
+            ///
+            /// # Complexity
+            /// Removal in the map is amortized `O(1)`.
+            ///
+            pub(super) fn remove<T: $type>(&mut self) -> Option<$id> {
+                self.map.remove(&TypeId::of::<T>())
+            }
+            /// Returns id that corresponds to given type.
+            /// If this type was not initialized, returns `None`.
+            ///
+            /// # Complexity
+            /// Lookup in the map are both amortized `O(1)`.
+            ///
+            pub(super) fn get<T: $type>(&self) -> Option<$id> {
+                self.map.get(&TypeId::of::<T>()).copied()
+            }
+
+            /// Returns the number of elements the map can hold without reallocating.
+            ///
+            /// This number is a lower bound; the map might be able to hold more,
+            /// but is guaranteed to be able to hold at least this many.
+            ///
+            pub(super) fn capacity(&self) -> usize {
+                self.map.capacity()
+            }
+            /// Returns the number of elements in the map.
+            ///
+            pub(super) fn len(&self) -> usize {
+                self.map.len()
+            }
+            /// Returns `true` if the map contains no elements, otherwise `false`.
+            ///
+            pub(super) fn is_empty(&self) -> bool {
+                self.map.is_empty()
+            }
+        }
+    };
+}
+
 /// [`ComponentMap`] struct handles `Component` initialization by binding specific `TypeId`s to exact `ComponentId`.
 /// This approach allows for describing `Component`s as Rust types.
-///
-/// This struct is a wrapper of `IdMap<TypeId, ComponentId>`.
 ///
 #[derive(Debug, Default)]
 pub(super) struct ComponentMap {
     /// Map that binds `TypeId`s to `ComponentId`s.
     ///
-    components: IdMap<TypeId, ComponentId>,
+    map: IdMap<TypeId, ComponentId>,
 }
-impl ComponentMap {
-    /// Initializes an empty [`ComponentMap`] that uses [`NoOpHasher`] internally.
-    ///
-    /// The [`ComponentMap`] is initially created with a capacity of 0,
-    /// so it will not allocate until it is first inserted into.
-    ///
-    pub(super) fn new() -> ComponentMap {
-        ComponentMap {
-            components: IdMap::with_hasher(NoOpHasherState),
-        }
-    }
-    /// Initializes an empty [`ComponentMap`] that uses [`NoOpHasher`] internally
-    /// with at least the specified capacity.
-    ///
-    /// The [`ComponentMap`] will be able to hold at least `capacity` elements without reallocating.
-    /// This method is allowed to allocate for more elements than `capacity`.
-    /// If `capacity` is 0, it will not allocate.
-    ///
-    pub(super) fn with_capacity(capacity: usize) -> ComponentMap {
-        ComponentMap {
-            components: IdMap::with_capacity_and_hasher(capacity, NoOpHasherState),
-        }
-    }
+impl_type_map!(ComponentMap, Component, ComponentId);
 
-    /// Initializes `Component` type in [`ComponentMap`] and returns assigned `ComponentId`.
-    /// If `Component` was already initialized it returns `ComponentId` that was assigned previously.
+/// [`ResourceMap`] struct handles `Resource` initialization by binding specific `TypeId`s to exact `ResourceId`.
+/// This approach allows for describing `Resource`s as Rust types.
+///
+#[derive(Debug, Default)]
+pub(super) struct ResourceMap {
+    /// Map that binds `TypeId`s to `ResourceId`s.
     ///
-    /// # Complexity
-    /// Insertion and lookup in the [`ComponentMap`] are both amortized `O(1)`.
-    ///
-    pub(super) fn get_or_insert<T: Component>(&mut self) -> ComponentId {
-        let type_id: TypeId = TypeId::of::<T>();
-        let component_id: ComponentId = ComponentId::new(self.components.len() as u64);
-        *self.components.entry(type_id).or_insert(component_id)
-    }
-    /// Removes `Component` type from [`ComponentMap`] and returns its previous `ComponentId`.
-    /// If this `Component` was not initialized, returns `None`.
-    ///
-    /// # Complexity
-    /// Removal in the [`ComponentMap`] is amortized `O(1)`.
-    ///
-    pub(super) fn remove<T: Component>(&mut self) -> Option<ComponentId> {
-        self.components.remove(&TypeId::of::<T>())
-    }
-    /// Returns `ComponentId` that corresponds to `Component` type.
-    /// If this `Component` was not initialized, returns `None`.
-    ///
-    /// # Complexity
-    /// Lookup in the [`ComponentMap`] are both amortized `O(1)`.
-    ///
-    pub(super) fn get<T: Component>(&self) -> Option<ComponentId> {
-        self.components.get(&TypeId::of::<T>()).copied()
-    }
-
-    /// Returns the number of elements the map can hold without reallocating.
-    ///
-    /// This number is a lower bound; the [`ComponentMap`] might be able to hold more,
-    /// but is guaranteed to be able to hold at least this many.
-    ///
-    pub(super) fn capacity(&self) -> usize {
-        self.components.capacity()
-    }
-    /// Returns the number of elements in the map.
-    ///
-    pub(super) fn len(&self) -> usize {
-        self.components.len()
-    }
-    /// Returns `true` if the map contains no elements, otherwise `false`.
-    ///
-    pub(super) fn is_empty(&self) -> bool {
-        self.components.is_empty()
-    }
+    map: IdMap<TypeId, ResourceId>,
 }
+impl_type_map!(ResourceMap, Resource, ResourceId);
 
 /// [`ComponentTable`] is a column-oriented structure-of-arrays based storage
 /// that maps `GameObject`s to their `Component`s.
@@ -419,6 +438,14 @@ impl ComponentTable {
 
 #[cfg(test)]
 mod tests {
+    use crate::gamecore::components::{Component, Resource};
+
+    impl Component for u8 {}
+    impl Component for i8 {}
+
+    impl Resource for u8 {}
+    impl Resource for i8 {}
+
     #[test]
     fn component_map() {
         use super::ComponentMap;
@@ -442,12 +469,31 @@ mod tests {
     }
 
     #[test]
+    fn resource_map() {
+        use super::ResourceMap;
+        use crate::gamecore::identifiers::ResourceId;
+
+        let mut resource_map: ResourceMap = ResourceMap::new();
+
+        let resource_id_u8: ResourceId = resource_map.get_or_insert::<u8>();
+        assert_eq!(resource_map.get_or_insert::<u8>(), resource_id_u8);
+
+        assert_eq!(resource_map.remove::<u8>(), Some(resource_id_u8));
+        assert!(resource_map.is_empty());
+        assert!(resource_map.remove::<u8>().is_none());
+
+        let resource_id_i8: ResourceId = resource_map.get_or_insert::<i8>();
+        let resource_id_u8: ResourceId = resource_map.get_or_insert::<u8>();
+        assert_eq!(resource_map.get_or_insert::<u8>(), resource_id_u8);
+        assert_eq!(resource_map.get_or_insert::<i8>(), resource_id_i8);
+
+        assert_ne!(resource_map.get_or_insert::<u8>(), resource_id_i8);
+    }
+
+    #[test]
     fn component_table() {
         use super::{BoxedComponent, ComponentTable};
-        use crate::gamecore::{
-            components::Component,
-            identifiers::{ComponentId, GameObjectId},
-        };
+        use crate::gamecore::identifiers::{ComponentId, GameObjectId};
         use std::ops::Deref;
 
         let gameobject_id0: GameObjectId = GameObjectId::new(0);
@@ -455,10 +501,8 @@ mod tests {
 
         let component_id0: ComponentId = ComponentId::new(0);
         const COMPONENT0: u8 = 0;
-        impl Component for u8 {}
         let component_id1: ComponentId = ComponentId::new(1);
         const COMPONENT1: i8 = 0;
-        impl Component for i8 {}
 
         let mut component_table: ComponentTable = ComponentTable::new();
 
