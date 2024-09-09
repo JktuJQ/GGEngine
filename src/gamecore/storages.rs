@@ -3,11 +3,11 @@
 //!
 
 use crate::gamecore::{
-    components::{BoxedComponent, Component, Resource},
+    components::{as_any::AsAny, BoxedComponent, BoxedResource, Component, Resource},
     identifiers::{ComponentId, GameObjectId, ResourceId},
 };
 use std::{
-    any::TypeId,
+    any::{Any, TypeId},
     collections::HashMap,
     hash::{BuildHasher, Hasher},
 };
@@ -141,6 +141,12 @@ macro_rules! impl_type_map {
             pub(super) fn is_empty(&self) -> bool {
                 self.map.is_empty()
             }
+
+            /// Clears the map. Keeps the allocated memory for reuse.
+            ///
+            pub(super) fn clear(&mut self) {
+                self.map.clear()
+            }
         }
     };
 }
@@ -155,18 +161,6 @@ pub(super) struct ComponentMap {
     map: IdMap<TypeId, ComponentId>,
 }
 impl_type_map!(ComponentMap, Component, ComponentId);
-
-/// [`ResourceMap`] struct handles `Resource` initialization by binding specific `TypeId`s to exact `ResourceId`.
-/// This approach allows for describing `Resource`s as Rust types.
-///
-#[derive(Debug, Default)]
-pub(super) struct ResourceMap {
-    /// Map that binds `TypeId`s to `ResourceId`s.
-    ///
-    map: IdMap<TypeId, ResourceId>,
-}
-impl_type_map!(ResourceMap, Resource, ResourceId);
-
 /// [`ComponentTable`] is a column-oriented structure-of-arrays based storage
 /// that maps `GameObject`s to their `Component`s.
 ///
@@ -385,7 +379,7 @@ impl ComponentTable {
     /// Retrieval requires 2 lookups on maps which are amortized `O(1)`
     /// and retrieving value from a vector which is `O(1)`.
     /// Overall complexity is amortized `O(1)`.
-    ///    
+    ///
     pub(super) fn get_gameobject_component(
         &self,
         gameobject_id: GameObjectId,
@@ -400,7 +394,7 @@ impl ComponentTable {
     ///
     /// This number is a lower bound; the [`ComponentTable`] might be able to hold more,
     /// but is guaranteed to be able to hold at least this many.
-    ///     
+    ///
     pub(super) fn gameobject_capacity(&self) -> usize {
         self.gameobject_map.capacity()
     }
@@ -433,6 +427,103 @@ impl ComponentTable {
     ///
     pub(super) fn has_component(&self, component_id: ComponentId) -> bool {
         self.component_table.contains_key(&component_id)
+    }
+}
+
+/// [`ResourceMap`] struct handles `Resource` initialization by binding specific `TypeId`s to exact `ResourceId`.
+/// This approach allows for describing `Resource`s as Rust types.
+///
+#[derive(Debug, Default)]
+pub(super) struct ResourceMap {
+    /// Map that binds `TypeId`s to `ResourceId`s.
+    ///
+    map: IdMap<TypeId, ResourceId>,
+}
+impl_type_map!(ResourceMap, Resource, ResourceId);
+pub struct ResourceStorage {
+    resource_map: ResourceMap,
+    resources: IdMap<ResourceId, BoxedResource>,
+}
+impl ResourceStorage {
+    pub fn init_resource<T: Resource>(&mut self) -> ResourceId {
+        self.resource_map.get_or_insert::<T>()
+    }
+    pub fn insert_resource<T: Resource>(&mut self, value: T) -> Option<T> {
+        self.resources
+            .insert(self.resource_map.get_or_insert::<T>(), Box::new(value))
+            .map(|boxed_resource| {
+                *(boxed_resource
+                    .as_any_box()
+                    .downcast::<T>()
+                    .expect("This type's id corresponds to this value."))
+            })
+    }
+    pub fn insert_resource_by_id(
+        &mut self,
+        resource_id: ResourceId,
+        value: BoxedResource,
+    ) -> Option<Box<dyn Any>> {
+        self.resources
+            .insert(resource_id, value)
+            .map(|boxed_resource| boxed_resource.as_any_box())
+    }
+
+    pub fn remove_resource<T: Resource>(&mut self) -> Option<T> {
+        let resource_id: ResourceId = self.resource_map.remove::<T>()?;
+        self.resources.remove(&resource_id).map(|boxed_resource| {
+            *(boxed_resource
+                .as_any_box()
+                .downcast::<T>()
+                .expect("This type's id corresponds to this value."))
+        })
+    }
+    pub fn remove_resource_by_id(&mut self, resource_id: ResourceId) -> Option<Box<dyn Any>> {
+        self.resources
+            .remove(&resource_id)
+            .map(|boxed_resource| boxed_resource.as_any_box())
+    }
+
+    pub fn contains_resource<T: Resource>(&mut self) -> bool {
+        self.resource_map.get::<T>().is_some()
+    }
+    pub fn contains_resource_by_id(&mut self, resource_id: ResourceId) -> bool {
+        self.resources.contains_key(&resource_id)
+    }
+
+    pub fn get_resource<T: Resource>(&self) -> Option<&T> {
+        let resource_id: ResourceId = self.resource_map.get::<T>()?;
+        let boxed_resource: &BoxedResource = self.resources.get(&resource_id)?;
+        (*boxed_resource).as_any_ref().downcast_ref::<T>()
+    }
+    pub fn get_resource_by_id(&self, resource_id: ResourceId) -> Option<&dyn Any> {
+        self.resources
+            .get(&resource_id)
+            .map(|boxed_resource| (*boxed_resource).as_any_ref())
+    }
+    pub fn get_resource_mut<T: Resource>(&mut self) -> Option<&mut T> {
+        let resource_id: ResourceId = self.resource_map.get::<T>()?;
+        let boxed_resource: &mut BoxedResource = self.resources.get_mut(&resource_id)?;
+        (*boxed_resource).as_any_mut().downcast_mut::<T>()
+    }
+    pub fn get_resource_by_id_mut(&mut self, resource_id: ResourceId) -> Option<&mut dyn Any> {
+        self.resources
+            .get_mut(&resource_id)
+            .map(|boxed_resource| boxed_resource.as_any_mut())
+    }
+    pub fn get_resource_or_insert_with<T: Resource>(&mut self, f: impl FnOnce() -> T) -> &mut T {
+        let resource_id: ResourceId = self.resource_map.get_or_insert::<T>();
+        (**self
+            .resources
+            .entry(resource_id)
+            .or_insert_with(|| Box::new(f())))
+        .as_any_mut()
+        .downcast_mut::<T>()
+        .expect("This type's id corresponds to this value.")
+    }
+
+    pub fn clear_resources(&mut self) {
+        self.resource_map.clear();
+        self.resources.clear();
     }
 }
 
@@ -542,7 +633,7 @@ mod tests {
         assert_eq!(
             retrieved_component
                 .deref()
-                .as_any()
+                .as_any_ref()
                 .downcast_ref::<u8>()
                 .expect("u8 was packed."),
             &COMPONENT0
@@ -603,7 +694,7 @@ mod tests {
                 .as_ref()
                 .expect("Component was added.")
                 .deref()
-                .as_any()
+                .as_any_ref()
                 .downcast_ref::<u8>()
                 .expect("u8 was packed."),
             component_table
@@ -612,7 +703,7 @@ mod tests {
                 .as_ref()
                 .expect("Component was added.")
                 .deref()
-                .as_any()
+                .as_any_ref()
                 .downcast_ref::<u8>()
                 .expect("u8 was packed.")
         );

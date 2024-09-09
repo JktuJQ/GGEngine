@@ -18,7 +18,7 @@ use std::{
 /// Workaround is implemented in `AsAny` trait.
 ///
 /// # Note
-/// Although `as_any` method could belong to the [`Component`]/[`Resource`] trait itself,
+/// Although `as_any_ref` method could belong to the [`Component`]/[`Resource`] trait itself,
 /// it would not fit ECS component meaning (even if it was hidden in docs)
 /// and also would require for users to manually implement it (even if it is trivial),
 /// so it is instead moved to the hidden trait.
@@ -39,10 +39,22 @@ pub(in crate::gamecore) mod as_any {
     pub trait AsAny {
         /// Method that coerces `&self` to `&dyn Any`.
         ///
-        fn as_any(&self) -> &dyn Any;
+        fn as_any_ref(&self) -> &dyn Any;
+        /// Method that coerces `&mut self` to `&mut dyn Any`.
+        ///
+        fn as_any_mut(&mut self) -> &mut dyn Any;
+        /// Method that coerces `Box<dyn T>` to `Box<dyn Any>`.
+        ///
+        fn as_any_box(self: Box<Self>) -> Box<dyn Any>;
     }
     impl<T: Any> AsAny for T {
-        fn as_any(&self) -> &dyn Any {
+        fn as_any_ref(&self) -> &dyn Any {
+            self
+        }
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+        fn as_any_box(self: Box<Self>) -> Box<dyn Any> {
             self
         }
     }
