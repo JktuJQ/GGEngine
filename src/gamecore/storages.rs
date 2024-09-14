@@ -25,7 +25,7 @@ use std::{
 /// but without overhead of hashing. Those indices are already high-quality hashes because their
 /// uniqueness is ensured, so this `Hasher` implementation can give an actual performance boost.
 ///
-/// **This hasher only passes `u64` as a no-op hashing, `write` function will panic. **
+/// **This hasher only passes `u64` as a no-op hashing, `write` function will panic.**
 ///
 #[derive(Copy, Clone, Debug, Default)]
 struct NoOpHasher(u64);
@@ -45,7 +45,7 @@ impl Hasher for NoOpHasher {
 
 /// [`NoOpHasherState`] struct implements `BuildHasher` trait that produces [`NoOpHasher`].
 ///
-/// This should be passed to collections interfaces (e.g. `HashMap::with_hasher(NoOpHasherState))`.
+/// This should be passed to collections interfaces (e.g. `HashMap::with_hasher(NoOpHasherState)`).
 ///
 #[derive(Copy, Clone, Debug, Default)]
 struct NoOpHasherState;
@@ -62,10 +62,9 @@ impl BuildHasher for NoOpHasherState {
 /// [`IdMap`] should be used wherever id structs are keys in a `HashMap`.
 ///
 type IdMap<K, V> = HashMap<K, V, NoOpHasherState>;
-
 /// [`impl_type_map`] macro implements maps that bind `TypeId`s to id structs.
 ///
-/// Maps must have `map` field.
+/// Maps must have `map` and `removed` fields.
 ///
 macro_rules! impl_type_map {
     ($struct:ident, $type:ident, $id:ident) => {
@@ -78,6 +77,7 @@ macro_rules! impl_type_map {
             pub(super) fn new() -> Self {
                 Self {
                     map: IdMap::with_hasher(NoOpHasherState),
+                    removed: Vec::new(),
                 }
             }
             /// Initializes an empty map that uses [`NoOpHasher`] internally
@@ -90,6 +90,7 @@ macro_rules! impl_type_map {
             pub(super) fn with_capacity(capacity: usize) -> Self {
                 Self {
                     map: IdMap::with_capacity_and_hasher(capacity, NoOpHasherState),
+                    removed: Vec::with_capacity(capacity),
                 }
             }
 
@@ -101,8 +102,11 @@ macro_rules! impl_type_map {
             ///
             pub(super) fn get_or_insert<T: $type>(&mut self) -> $id {
                 let type_id: TypeId = TypeId::of::<T>();
-                let id: $id = $id::new(self.map.len() as u64);
-                *self.map.entry(type_id).or_insert(id)
+                let new_id: u64 = self.map.len() as u64;
+                *self
+                    .map
+                    .entry(type_id)
+                    .or_insert_with(|| self.removed.pop().unwrap_or($id::new(new_id)))
             }
             /// Removes given type from map and returns its previous id.
             /// If this type was not initialized, returns `None`.
@@ -111,7 +115,11 @@ macro_rules! impl_type_map {
             /// Removal in the map is amortized `O(1)`.
             ///
             pub(super) fn remove<T: $type>(&mut self) -> Option<$id> {
-                self.map.remove(&TypeId::of::<T>())
+                let removed_id: Option<$id> = self.map.remove(&TypeId::of::<T>());
+                if let Some(id) = removed_id {
+                    self.removed.push(id);
+                }
+                removed_id
             }
             /// Returns id that corresponds to given type.
             /// If this type was not initialized, returns `None`.
@@ -159,6 +167,9 @@ pub(super) struct ComponentMap {
     /// Map that binds `TypeId`s to `ComponentId`s.
     ///
     map: IdMap<TypeId, ComponentId>,
+    /// Vector that holds indices that were binded to removed `ComponentId`s.
+    ///
+    removed: Vec<ComponentId>,
 }
 impl_type_map!(ComponentMap, Component, ComponentId);
 /// [`ComponentTable`] is a column-oriented structure-of-arrays based storage
@@ -438,16 +449,85 @@ pub(super) struct ResourceMap {
     /// Map that binds `TypeId`s to `ResourceId`s.
     ///
     map: IdMap<TypeId, ResourceId>,
+    /// Vector that holds indices that were binded to removed `ResourceId`s.
+    ///
+    removed: Vec<ResourceId>,
 }
 impl_type_map!(ResourceMap, Resource, ResourceId);
+/// [`ResourceStorage`] struct provides API for a storage of `Resource`s.
+///
+/// Commonly, you will use this struct through the `Scene` which has its own [`ResourceStorage`].
+/// `ggengine` still provides tools for manual constructions - you might want to use them to implement
+/// efficient application reload or other specialized scenarios.
+///
+/// # Usage
+/// [`ResourceStorage`] struct implements typed API that is very similar to what you might have seen
+/// in Unity. It takes concrete types and dispatches them to stored resources.
+/// There are `*_by_id` counterparts for all such functions in `ResourceStorage`.
+/// Those support very special case - when resource has a type that is unknown at compile time.
+/// Internally, resources are stored as `BoxedResource`s. `ggengine` usually is able
+/// to restore initial type, but for the special case it resorts to usage of `Any`-powered dynamic
+/// typing and leaves the downcasting part for the programmer.
+/// You should not use those functions unless you really need to, prefer typed API instead.
+///
+#[derive(Debug, Default)]
 pub struct ResourceStorage {
+    /// Map that dispatches on `Resource` types.
+    ///
     resource_map: ResourceMap,
+    /// Map that stores resources.
+    ///
     resources: IdMap<ResourceId, BoxedResource>,
 }
 impl ResourceStorage {
+    /// Initializes new [`ResourceStorage`].
+    ///
+    /// Created [`ResourceStorage`] will not allocate until first insertions.
+    ///
+    pub fn new() -> ResourceStorage {
+        ResourceStorage {
+            resource_map: ResourceMap::new(),
+            resources: IdMap::with_hasher(NoOpHasherState),
+        }
+    }
+
+    /// Initializes a new resource and returns the `ResourceId` created for it.
+    /// If resource was already initialized, returns `ResourceId` that is assigned to it.
+    ///
+    /// Usually, usage of typed API does not require `ResourceId`, so this function is rarely
+    /// useful, but it can be used to preallocate or to obtain id which then can be used in
+    /// `*_by_id` counterparts.
+    /// Note that the latter usage should be done with care -
+    /// you will probably need to have some 'useless' types that would respond to your data,
+    /// but usage of typed API would still be unsound, since downcasting would fail.
+    /// Prefer using `init_resource_by_id` for this situation.
+    ///
     pub fn init_resource<T: Resource>(&mut self) -> ResourceId {
         self.resource_map.get_or_insert::<T>()
     }
+    /// Initializes new `ResourceId` if a `ResourceId` with given value does not exist.
+    /// (this function is a counterpart of `init_resource` - read [`ResourceStorage`] 'usage' section).
+    ///
+    /// This function can be thought of as `ResourceId::new`, because it can create `ResourceId`s
+    /// with arbitrary values. As with all `*_by_id` functions, this should be used with care,
+    /// because you can reserve id which could then be used automatically by typed API.
+    /// For this reason, you should try to reserve ids with values that are close to `u64::MAX`,
+    /// because typed API tries to use the lowest id when possible.
+    ///
+    pub fn init_resource_by_id(&mut self, resource_id: u64) -> Option<ResourceId> {
+        let resource_id: ResourceId = ResourceId::new(resource_id);
+        match self.resources.contains_key(&resource_id) {
+            true => Some(resource_id),
+            false => None,
+        }
+    }
+
+    /// Inserts a new resource with the given value.
+    ///
+    /// Resources are unique data of a given type.
+    /// If you insert a resource of a type that already exists,
+    /// you will overwrite any existing data and this function will return old value.
+    ///
     pub fn insert_resource<T: Resource>(&mut self, value: T) -> Option<T> {
         self.resources
             .insert(self.resource_map.get_or_insert::<T>(), Box::new(value))
@@ -455,9 +535,16 @@ impl ResourceStorage {
                 *(boxed_resource
                     .as_any_box()
                     .downcast::<T>()
-                    .expect("This type's id corresponds to this value."))
+                    .expect("This type's id should correspond to this value - otherwise an error was made in `*_by_id` functions."))
             })
     }
+    /// Inserts a new resource with the given value
+    /// (this function is a counterpart of `insert_resource` - read [`ResourceStorage`] 'usage' section).
+    ///
+    /// Resources are unique data of a given type.
+    /// If you insert a resource of a type that already exists,
+    /// you will overwrite any existing data and this function will return old value.
+    ///
     pub fn insert_resource_by_id(
         &mut self,
         resource_id: ResourceId,
@@ -468,6 +555,9 @@ impl ResourceStorage {
             .map(|boxed_resource| boxed_resource.as_any_box())
     }
 
+    /// Removes the resource of a given type and returns it, if it exists.
+    /// Otherwise, returns None.
+    ///
     pub fn remove_resource<T: Resource>(&mut self) -> Option<T> {
         let resource_id: ResourceId = self.resource_map.remove::<T>()?;
         self.resources.remove(&resource_id).map(|boxed_resource| {
@@ -477,39 +567,61 @@ impl ResourceStorage {
                 .expect("This type's id corresponds to this value."))
         })
     }
+    /// Removes the resource of a given type and returns it, if it exists
+    /// (this function is a counterpart of `remove_resource` - read [`ResourceStorage`] 'usage' section).
+    ///
     pub fn remove_resource_by_id(&mut self, resource_id: ResourceId) -> Option<Box<dyn Any>> {
         self.resources
             .remove(&resource_id)
             .map(|boxed_resource| boxed_resource.as_any_box())
     }
 
+    /// Returns whether a resource of type T exists or not.
+    ///
     pub fn contains_resource<T: Resource>(&mut self) -> bool {
         self.resource_map.get::<T>().is_some()
     }
+    /// Returns true if given `ResourceId` is registered in [`ResourceStorage`]
+    /// (this function is a counterpart of `contains_resource` - read [`ResourceStorage`] 'usage' section).
+    ///
     pub fn contains_resource_by_id(&mut self, resource_id: ResourceId) -> bool {
         self.resources.contains_key(&resource_id)
     }
 
+    /// Gets a reference to the resource of the given type if it exists.
+    ///
     pub fn get_resource<T: Resource>(&self) -> Option<&T> {
         let resource_id: ResourceId = self.resource_map.get::<T>()?;
         let boxed_resource: &BoxedResource = self.resources.get(&resource_id)?;
-        (*boxed_resource).as_any_ref().downcast_ref::<T>()
+        (**boxed_resource).as_any_ref().downcast_ref::<T>()
     }
+    /// Gets a reference to the resource that corresponds to given `ResourceId` if it exists
+    /// (this function is a counterpart of `get_resource` - read [`ResourceStorage`] 'usage' section).
+    ///
     pub fn get_resource_by_id(&self, resource_id: ResourceId) -> Option<&dyn Any> {
         self.resources
             .get(&resource_id)
-            .map(|boxed_resource| (*boxed_resource).as_any_ref())
+            .map(|boxed_resource| (**boxed_resource).as_any_ref())
     }
+    /// Gets a mutable reference to the resource of the given type if it exists.
+    ///
     pub fn get_resource_mut<T: Resource>(&mut self) -> Option<&mut T> {
         let resource_id: ResourceId = self.resource_map.get::<T>()?;
         let boxed_resource: &mut BoxedResource = self.resources.get_mut(&resource_id)?;
-        (*boxed_resource).as_any_mut().downcast_mut::<T>()
+        (**boxed_resource).as_any_mut().downcast_mut::<T>()
     }
+    /// Gets a mutable reference to the resource that corresponds to given `ResourceId` if it exists
+    /// (this function is a counterpart of `get_resource_mut` - read [`ResourceStorage`] 'usage' section).
+    ///
     pub fn get_resource_by_id_mut(&mut self, resource_id: ResourceId) -> Option<&mut dyn Any> {
         self.resources
             .get_mut(&resource_id)
-            .map(|boxed_resource| boxed_resource.as_any_mut())
+            .map(|boxed_resource| (**boxed_resource).as_any_mut())
     }
+    /// Gets a mutable reference to the resource of given type if it exists,
+    /// otherwise inserts the resource that is constructed by given closure and
+    /// returns mutable reference to it.
+    ///
     pub fn get_resource_or_insert_with<T: Resource>(&mut self, f: impl FnOnce() -> T) -> &mut T {
         let resource_id: ResourceId = self.resource_map.get_or_insert::<T>();
         (**self
@@ -520,7 +632,20 @@ impl ResourceStorage {
         .downcast_mut::<T>()
         .expect("This type's id corresponds to this value.")
     }
+    /// Gets a mutable reference to the resource that corresponds to given `ResourceId` if it exists,
+    /// otherwise inserts the resource that is constructed by given closure and
+    /// returns mutable reference to it.
+    ///
+    pub fn get_resource_or_insert_with_by_id(
+        &mut self,
+        resource_id: ResourceId,
+        f: impl FnOnce() -> BoxedResource,
+    ) -> &mut dyn Any {
+        (**self.resources.entry(resource_id).or_insert_with(|| f())).as_any_mut()
+    }
 
+    /// Clears the map, removing all data. Keeps the allocated memory for reuse.
+    ///
     pub fn clear_resources(&mut self) {
         self.resource_map.clear();
         self.resources.clear();
@@ -530,6 +655,7 @@ impl ResourceStorage {
 #[cfg(test)]
 mod tests {
     use crate::gamecore::components::{Component, Resource};
+    use crate::gamecore::identifiers::ComponentId;
 
     impl Component for u8 {}
     impl Component for i8 {}
@@ -556,29 +682,12 @@ mod tests {
         assert_eq!(component_map.get_or_insert::<u8>(), component_id_u8);
         assert_eq!(component_map.get_or_insert::<i8>(), component_id_i8);
 
+        component_map.remove::<i8>();
+
+        let component_id_i8: ComponentId = component_map.get_or_insert::<i8>();
+        assert_eq!(component_map.get_or_insert::<i8>(), component_id_i8);
+
         assert_ne!(component_map.get_or_insert::<u8>(), component_id_i8);
-    }
-
-    #[test]
-    fn resource_map() {
-        use super::ResourceMap;
-        use crate::gamecore::identifiers::ResourceId;
-
-        let mut resource_map: ResourceMap = ResourceMap::new();
-
-        let resource_id_u8: ResourceId = resource_map.get_or_insert::<u8>();
-        assert_eq!(resource_map.get_or_insert::<u8>(), resource_id_u8);
-
-        assert_eq!(resource_map.remove::<u8>(), Some(resource_id_u8));
-        assert!(resource_map.is_empty());
-        assert!(resource_map.remove::<u8>().is_none());
-
-        let resource_id_i8: ResourceId = resource_map.get_or_insert::<i8>();
-        let resource_id_u8: ResourceId = resource_map.get_or_insert::<u8>();
-        assert_eq!(resource_map.get_or_insert::<u8>(), resource_id_u8);
-        assert_eq!(resource_map.get_or_insert::<i8>(), resource_id_i8);
-
-        assert_ne!(resource_map.get_or_insert::<u8>(), resource_id_i8);
     }
 
     #[test]
@@ -722,5 +831,71 @@ mod tests {
         assert!(component_table
             .get_gameobject_component(gameobject_id1, component_id0)
             .is_none());
+    }
+
+    #[test]
+    fn resource_map() {
+        use super::ResourceMap;
+        use crate::gamecore::identifiers::ResourceId;
+
+        let mut resource_map: ResourceMap = ResourceMap::new();
+
+        let resource_id_u8: ResourceId = resource_map.get_or_insert::<u8>();
+        assert_eq!(resource_map.get_or_insert::<u8>(), resource_id_u8);
+
+        assert_eq!(resource_map.remove::<u8>(), Some(resource_id_u8));
+        assert!(resource_map.is_empty());
+        assert!(resource_map.remove::<u8>().is_none());
+
+        let resource_id_i8: ResourceId = resource_map.get_or_insert::<i8>();
+        let resource_id_u8: ResourceId = resource_map.get_or_insert::<u8>();
+        assert_eq!(resource_map.get_or_insert::<u8>(), resource_id_u8);
+        assert_eq!(resource_map.get_or_insert::<i8>(), resource_id_i8);
+
+        resource_map.remove::<i8>();
+
+        let resource_id_i8: ResourceId = resource_map.get_or_insert::<i8>();
+        assert_eq!(resource_map.get_or_insert::<i8>(), resource_id_i8);
+
+        assert_ne!(resource_map.get_or_insert::<u8>(), resource_id_i8);
+    }
+
+    #[test]
+    fn resource_storage() {
+        use super::ResourceStorage;
+
+        let mut resource_storage: ResourceStorage = ResourceStorage::new();
+
+        resource_storage.insert_resource(0u8);
+        resource_storage.insert_resource(0i8);
+
+        assert!(resource_storage.contains_resource::<u8>());
+        assert_eq!(resource_storage.insert_resource(1u8), Some(0u8));
+        let resource: &mut u8 = resource_storage
+            .get_resource_mut::<u8>()
+            .expect("`u8` resource was added");
+
+        assert_eq!(*resource, 1u8);
+        *resource = 2u8;
+
+        assert_eq!(
+            resource_storage
+                .remove_resource::<u8>()
+                .expect("`u8` resource was added"),
+            2u8
+        );
+
+        resource_storage.clear_resources();
+        assert!(resource_storage.get_resource::<i8>().is_none());
+
+        let resource: &mut u8 = resource_storage.get_resource_or_insert_with(|| 0u8);
+        *resource = 1u8;
+        assert_eq!(*resource_storage.get_resource_or_insert_with(|| 5u8), 1u8);
+        assert_eq!(
+            *resource_storage
+                .get_resource::<u8>()
+                .expect("`u8` resource was added"),
+            1u8
+        );
     }
 }
