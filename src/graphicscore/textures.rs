@@ -303,7 +303,6 @@ impl<'a> Texture<'a> {
     /// This function should not be used to get the actual data of [`Texture`], because due to optimisation
     /// inner data does not necessarily contain the old texture data.
     ///
-    ///
     /// # Example
     /// ```rust, no_run
     /// # use ggengine::graphicscore::textures::{TextureCreator, Texture};

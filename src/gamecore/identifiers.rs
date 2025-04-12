@@ -26,7 +26,7 @@ macro_rules! impl_id {
     };
 }
 
-/// [`GameObjectId`] id struct is needed to identify [`Entity`](super::entities::Entity)s
+/// [`EntityId`] id struct is needed to identify [`Entity`](super::entities::Entity)s
 /// in [`Scene`](super::scenes::Scene).
 ///
 /// It is assigned by the [`Scene`](super::scenes::Scene) in which
