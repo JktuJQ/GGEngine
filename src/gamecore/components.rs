@@ -5,9 +5,9 @@
 //!
 
 use std::{
-    any::{type_name, Any},
-    collections::LinkedList,
+    any::{type_name, Any, TypeId},
     fmt,
+    iter::{empty, once},
 };
 
 /// `as_any` hidden module is needed to hide trait upcasting workaround.
@@ -137,14 +137,8 @@ impl fmt::Debug for dyn Component {
 /// This type alias will be frequently used in situations in which
 /// ownership of components is needed.
 ///
-/// Internally `ggengine` has to operate with trait objects, and
-/// they need to be boxed, because ownership is required.
-/// Passing single component is trivial: `ggengine` will just ask for
-/// `T: Component` and construct [`BoxedComponent`] by itself.
-/// On the other hand, passing multiple components (for example in form of a bundle)
-/// is not as easy, because caller will need to construct [`BoxedComponent`]s manually.
-/// That may be inconvenient, but `ggengine` does its best to abstract that away.
-/// Docs on [`Bundle`] show some examples on that topic.
+/// `Box<dyn Component>` also allows combining multiple different [`Component`]s in one structure
+/// (`Vec`, iterator, etc.).
 ///
 pub type BoxedComponent = Box<dyn Component>;
 
@@ -166,13 +160,16 @@ pub type BoxedComponent = Box<dyn Component>;
 /// Every [`Component`] is a [`Bundle`], because component is basically a set (bundle) of one component.
 /// Additionally, tuples of bundles are also [`Bundle`] (with up to 12 items,
 /// but those tuples can be nested, which practically removes that bound).
-/// This allows you to combine the necessary components into a [`Bundle`],
-/// for example defining a PlayerBundle containing components that describe the player
+/// This allows you to combine the necessary components into a [`Bundle`].
+///
+/// [`Bundle`] specifically requires [`BoxedComponent`]s to be returned from `Bundle::components`,
+/// and that is because iterator of one [`Component`] type would be
+///
+/// for example defining a `PlayerBundle` containing components that describe the player
 /// can be written as follows:
 ///
 /// ```rust
 /// # use ggengine::gamecore::components::Component;
-/// #
 /// #[derive(Default)]
 /// struct Player;
 /// impl Component for Player {}
@@ -195,7 +192,6 @@ pub type BoxedComponent = Box<dyn Component>;
 /// You can, of course, use `Default::default()`:
 /// ```rust
 /// # use ggengine::gamecore::components::Component;
-/// #
 /// # #[derive(Default)]
 /// # struct Player;
 /// # impl Component for Player {}
@@ -223,7 +219,6 @@ pub type BoxedComponent = Box<dyn Component>;
 /// for tuples:
 /// ```rust
 /// # use ggengine::gamecore::components::Component;
-/// #
 /// # #[derive(Default)]
 /// # struct Player;
 /// # impl Component for Player {}
@@ -254,12 +249,11 @@ pub type BoxedComponent = Box<dyn Component>;
 ///
 /// let player: PlayerBundle = PlayerBundle::with_name("Player".to_string());
 /// ```
-/// 2. You can implement [`Bundle`] trait manually.
-/// You may even try to leverage provided implementations to construct your own:
+///
+/// 2. You can implement [`Bundle`] trait leveraging provided implementation to construct your own:
 /// ```rust
 /// # use ggengine::gamecore::components::{Bundle, Component, BoxedComponent};
-/// # use std::collections::LinkedList;
-/// #
+/// # use std::any::TypeId;
 /// # #[derive(Default)]
 /// # struct Player;
 /// # impl Component for Player {}
@@ -282,7 +276,7 @@ pub type BoxedComponent = Box<dyn Component>;
 ///     position: Position,
 /// }
 /// impl Bundle for PlayerBundle {
-///     fn components(self) -> LinkedList<BoxedComponent> {
+///     fn components(self) -> impl IntoIterator<Item = (TypeId, BoxedComponent)> {
 ///         (self.player, self.name, self.position).components()
 ///     }
 /// }
@@ -295,51 +289,38 @@ pub type BoxedComponent = Box<dyn Component>;
 /// That approach allows to free yourself from all restrictions,
 /// and just 'pack a bundle' at the very end.
 ///
-/// # Note
-/// You may notice that return type of `Bundle::components` is `LinkedList` struct.
-/// That is because `ggengine` recursively flattens all nested
-/// bundles to one, and the nature of `LinkedList` allows
-/// easy list concatenation without any amortization.
+/// # Manual implementation
+/// `Bundle::components` function must return `impl IntoIterator<Item = (TypeId, BoxedComponent)>`.
+/// That `TypeId` is needed for dynamic dispatch of [`Component`] types in the ECS storage.
+/// Implementation of this trait should ensure that every `TypeId` matches with
+/// the type of corresponding [`Component`] that is boxed.
 ///
-/// Since `LinkedList` struct is not so different from its node,
-/// creation of a list for every component in a bundle that is
-/// already flattened and then concatenation of those lists
-/// is not as inefficient as `Vec` implementation would be.
-///
-/// The choice between `LinkedList` and `Vec` boils down to the following 2 points:
-/// 1. Recursive flattening of bundles requires creation of many single-item
-/// lists and multiple concatenations of those. `LinkedList` is perfectly
-/// suited for it, because `LinkedList` struct itself is just a node and
-/// concatenation of `LinkedList`s is very fast.
-/// One of the advantages of `Vec` is that it performs one big allocation
-/// (which is better than doing multiple small allocations)
-/// and then works with allocated memory.
-/// That does not work when we are concatenating multiple single-item lists, and it may even overallocate
-/// (we need space for only one component for single-item lists, but we need more when we concatenate).
-/// 2. Cache locality in `Vec` and absence of it in `LinkedList` is an important aspect
-/// to consider when it comes to performance. `Vec` is faster than `LinkedList`,
-/// but the only thing that happens to collection that represents unpacked bundle
-/// is that it is traversed once to assign all components to `Entity`.
-/// Considering that bundles are usually not very big, there is no significant performance gain
-/// of `Vec`.
-///
-/// In summary, although `LinkedList` is inferior to `Vec` in most of the cases,
-/// its usage is justified for [`Bundle`]:
-/// nature of `LinkedList` is suited for creation of multiple single-item lists (nodes)
-/// and for concatenating them, and performance gains of `Vec` are not significant in
-/// most of the use cases.
-/// Ergonomics of `LinkedList` fit [`Bundle`] use case, and that is why
-/// it has been chosen.
+/// Here is an example on how to correctly implement [`Bundle`] trait:
+/// ```rust
+/// # use ggengine::gamecore::components::{BoxedComponent, Bundle, Component};
+/// # use std::any::TypeId;
+/// # use std::iter::once;
+/// struct PackedBundle<T> {
+///     inner_component: T
+/// }
+/// impl<T: Component> Bundle for PackedBundle<T> {
+///     fn components(self) -> impl IntoIterator<Item=(TypeId, BoxedComponent)> {
+///         let boxed_component: BoxedComponent = Box::new(self.inner_component);
+///         once((TypeId::of::<T>(), boxed_component))
+///     }
+/// }
+/// ```
+/// `ggengine` advises not to implement [`Bundle`] manually unless you really need it.
 ///
 pub trait Bundle {
     /// Consumes itself and returns list of [`BoxedComponent`]s.
     ///
-    fn components(self) -> LinkedList<BoxedComponent>;
+    fn components(self) -> impl IntoIterator<Item = (TypeId, BoxedComponent)>;
 }
 impl<T: Component> Bundle for T {
-    fn components(self) -> LinkedList<BoxedComponent> {
-        let boxed_self: Box<dyn Component> = Box::new(self);
-        LinkedList::from([boxed_self])
+    fn components(self) -> impl IntoIterator<Item = (TypeId, BoxedComponent)> {
+        let boxed_self: BoxedComponent = Box::new(self);
+        once((TypeId::of::<T>(), boxed_self))
     }
 }
 /// [`impl_bundle`] macro implements [`Bundle`] trait for tuples of arity 12 or less.
@@ -348,21 +329,16 @@ macro_rules! impl_bundle {
     () => {
         impl Bundle for ()
         {
-            fn components(self) -> LinkedList<BoxedComponent> {
-                LinkedList::new()
+            fn components(self) -> impl IntoIterator<Item = (TypeId, BoxedComponent)> {
+                empty()
             }
         }
     };
     (($t_start:ident, $index_start:tt), $(($t:ident, $index:tt),)*) => {
         impl<$t_start: Bundle, $($t: Bundle),*> Bundle for ($t_start, $($t,)*)
         {
-            fn components(self) -> LinkedList<BoxedComponent> {
-                let mut result: LinkedList<BoxedComponent> = LinkedList::new();
-                result.append(&mut self.$index_start.components());
-                $(
-                    result.append(&mut self.$index.components());
-                )*
-                result
+            fn components(self) -> impl IntoIterator<Item = (TypeId, BoxedComponent)> {
+                self.$index_start.components().into_iter()$(.chain(self.$index.components().into_iter()))*
             }
         }
         impl_bundle!($(($t, $index),)*);
@@ -426,12 +402,7 @@ impl fmt::Debug for dyn Resource {
 /// This type alias will be frequently used in situations in which
 /// ownership of resource is needed.
 ///
-/// Internally `ggengine` has to operate with trait objects, and
-/// they need to be boxed, because ownership is required.
-/// Passing single resource is trivial: `ggengine` will just ask for
-/// `T: Resource` and construct [`BoxedResource`] by itself.
-/// On the other hand, passing multiple resources
-/// is not as easy, because caller will need to construct [`BoxedResource`]s manually.
-/// That may be inconvenient, but `ggengine` does its best to abstract that away.
+/// `Box<dyn Resource>` also allows combining multiple different [`Resource`]s in one structure
+/// (`Vec`, iterator, etc.).
 ///
 pub type BoxedResource = Box<dyn Resource>;
