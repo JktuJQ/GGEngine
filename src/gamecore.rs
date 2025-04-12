@@ -6,6 +6,6 @@
 mod storages;
 
 pub mod components;
-pub mod gameobjects;
+pub mod entities;
 pub mod identifiers;
 pub mod scenes;

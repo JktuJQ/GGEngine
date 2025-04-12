@@ -13,24 +13,34 @@ macro_rules! impl_id {
         impl $struct {
             /// Creates new id with given value.
             ///
-            pub(crate) fn new(id: u64) -> Self {
+            pub(super) fn new(id: u64) -> Self {
                 Self(id)
             }
 
             /// Returns underlying id.
             ///
-            pub fn value(&self) -> u64 {
+            pub(super) fn id(&self) -> u64 {
                 self.0
             }
         }
     };
 }
 
+/// [`GameObjectId`] id struct is needed to identify [`Entity`](super::entities::Entity)s
+/// in [`Scene`](super::scenes::Scene).
+///
+/// It is assigned by the [`Scene`](super::scenes::Scene) in which
+/// this [`Entity`](super::entities::Entity) is registered.
+///
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct EntityId(u64);
+impl_id!(EntityId);
+
 /// [`ComponentId`] id struct is needed to identify [`Component`](super::components::Component)s
 /// in [`Scene`](super::scenes::Scene).
 ///
 /// It is assigned by the [`Scene`](super::scenes::Scene) in which
-/// [`GameObject`](super::gameobjects::GameObject) with
+/// [`Entity`](super::entities::Entity) with
 /// this [`Component`](super::components::Component) is registered.
 ///
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -46,13 +56,3 @@ impl_id!(ComponentId);
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ResourceId(u64);
 impl_id!(ResourceId);
-
-/// [`GameObjectId`] id struct is needed to identify [`GameObject`](super::gameobjects::GameObject)s
-/// in [`Scene`](super::scenes::Scene).
-///
-/// It is assigned by the [`Scene`](super::scenes::Scene) in which
-/// this [`GameObject`](super::gameobjects::GameObject) is registered.
-///
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GameObjectId(u64);
-impl_id!(GameObjectId);

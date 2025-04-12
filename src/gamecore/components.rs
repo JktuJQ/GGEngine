@@ -1,6 +1,6 @@
 //! `gamecore::components` submodule defines [`Component`] trait
 //! that allows binding game logic that is represented in form of Rust types
-//! to exact [`GameObject`](super::gameobjects::GameObject),
+//! to exact [`Entity`](super::entities::Entity),
 //! and implements several basic components used in games.
 //!
 
@@ -63,14 +63,14 @@ pub(in crate::gamecore) mod as_any {
 /// [`Component`] trait defines objects that are components by ECS terminology.
 ///
 /// In ECS, components define objects, almost like in Rust
-/// traits define structs. So basically, components just are parts of `GameObject`
+/// traits define structs. So basically, components just are parts of `Entity`
 /// that are responsible for its functionality.
 /// ECS pattern encourages clean, decoupled design that
 /// splits up your app data and logic into its core components.
 ///
-/// `ggengine` supports having only one component of each type binded to `GameObject`.
-/// Trying to add two components of one type to `GameObject` could lead to unexpected
-/// behaviour, as `GameObject` will only use the latest component.
+/// `ggengine` supports having only one component of each type binded to `Entity`.
+/// Trying to add two components of one type to `Entity` could lead to unexpected
+/// behaviour, as `Entity` will only use the latest component.
 ///
 /// # Implementation
 /// [`Component`] trait requires `'static` trait bound, because `Any`
@@ -157,7 +157,7 @@ pub type BoxedComponent = Box<dyn Component>;
 /// Bundles are only a convenient way to group components in a set, and they should
 /// not be used as units of behaviour. That is because multiple bundles could contain
 /// the same [`Component`] type, and adding both of them to one
-/// [`GameObject`](super::gameobjects::GameObject) would lead to unexpected behaviour
+/// [`Entity`](super::entities::Entity) would lead to unexpected behaviour
 /// (see [`Component`] trait docs).
 /// For this reason it is impossible to use [`Bundle`] for querying. Instead, you should
 /// operate on [`Component`]s which define your game logic, querying those you need to use.
@@ -319,7 +319,7 @@ pub type BoxedComponent = Box<dyn Component>;
 /// 2. Cache locality in `Vec` and absence of it in `LinkedList` is an important aspect
 /// to consider when it comes to performance. `Vec` is faster than `LinkedList`,
 /// but the only thing that happens to collection that represents unpacked bundle
-/// is that it is traversed once to assign all components to `GameObject`.
+/// is that it is traversed once to assign all components to `Entity`.
 /// Considering that bundles are usually not very big, there is no significant performance gain
 /// of `Vec`.
 ///
@@ -386,10 +386,10 @@ impl_bundle!(
 /// [`Resource`] trait defines unique global data that is bounded to the `Scene`.
 ///
 /// [`Resource`]s are very similar to [`Component`]s, with the only difference is that
-/// [`Component`]s are bounded to `GameObject`s and [`Resource`]s are bound to the `Scene`.
+/// [`Component`]s are bounded to `Entity`s and [`Resource`]s are bound to the `Scene`.
 ///
 /// Applications often have some global data that they share, it could be time, score, asset collection, etc.
-/// Although global resources could be implemented as components that belong to some 'global' gameobject,
+/// Although global resources could be implemented as components that belong to some 'global' Entity,
 /// that would be confusing and would not convey intention logic.
 /// [`Resource`] trait supports this pattern, enforcing it through type system and allowing
 /// for data to be shared easily.

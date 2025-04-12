@@ -3,8 +3,8 @@
 //!
 
 use crate::gamecore::{
-    components::{BoxedComponent, BoxedResource,Resource},
-    identifiers::{ComponentId, GameObjectId, ResourceId},
+    components::{BoxedComponent, BoxedResource, Resource},
+    identifiers::{ComponentId, EntityId, ResourceId},
 };
 use std::{
     any::{Any, TypeId},
@@ -17,7 +17,7 @@ use std::{
 ///
 /// # Usage
 /// ECS model heavily relies on fast querying and indexation of
-/// [`Component`](Component)s and [`GameObject`](super::gameobjects::GameObject)s.
+/// [`Component`](Component)s and [`Entity`](super::entities::Entity)s.
 /// Id structs are indices for navigating their counterparts in [`Scene`](super::scenes::Scene) storage,
 /// and those are implemented as newtype-wrappers of `u64`.
 ///
@@ -167,18 +167,18 @@ macro_rules! impl_type_map {
         }
     };
 }
-/// [`GameObjectMap`] struct helps to find correct place in the table where rows are `GameObjectId`s.
+/// [`EntityMap`] struct helps to find correct place in the table where rows are `EntityId`s.
 ///
 #[derive(Debug, Default)]
-pub(super) struct GameObjectMap {
-    /// Map that binds `GameObjectId`s to `usize`s.
+pub(super) struct EntityMap {
+    /// Map that binds `EntityId`s to `usize`s.
     ///
-    map: IdMap<GameObjectId, usize>,
-    /// Vector that holds indices that were binded to removed `GameObjectId`s.
+    map: IdMap<EntityId, usize>,
+    /// Vector that holds indices that were binded to removed `EntityId`s.
     ///
     removed: Vec<usize>,
 }
-impl_type_map!(GameObjectMap, GameObjectId, usize, (|x| x));
+impl_type_map!(EntityMap, EntityId, usize, (|x| x));
 /// [`ComponentMap`] struct handles `Component` initialization by binding specific `TypeId`s to exact `ComponentId`.
 /// This approach allows for describing `Component`s as Rust types.
 ///
@@ -216,22 +216,22 @@ impl_type_map!(
     (|x| ResourceId::new(x as u64))
 );
 
-/// [`GameObjectComponentTable`] is a column-oriented structure-of-arrays based storage
-/// that maps `GameObject`s to their `Component`s.
+/// [`EntityComponentTable`] is a column-oriented structure-of-arrays based storage
+/// that maps `Entity`s to their `Component`s.
 ///
-/// Conceptually, [`GameObjectComponentTable`] can be thought of as an `HashMap<ComponentId, Vec<T: Component>>`,
-/// where each `Vec` contains components of one type that belong to different `GameObject`s.
+/// Conceptually, [`EntityComponentTable`] can be thought of as an `HashMap<ComponentId, Vec<T: Component>>`,
+/// where each `Vec` contains components of one type that belong to different `Entity`s.
 ///
-/// Each row corresponds to a single `GameObject`
+/// Each row corresponds to a single `Entity`
 /// (i.e. equal indices of `Vec`s point to different components on the same entity)
 /// and each column corresponds to a single `Component`
-/// (i.e. every `Vec` contains all `Component`s of one type that belong to different `GameObject`s).
+/// (i.e. every `Vec` contains all `Component`s of one type that belong to different `Entity`s).
 ///
 /// Fetching components from a table involves fetching the associated column for a `Component` type
-/// (via its `ComponentId`), then fetching the `GameObject`'s row within that column.
+/// (via its `ComponentId`), then fetching the `Entity`'s row within that column.
 ///
 /// # Performance
-/// [`GameObjectComponentTable`] uses [`NoOpHasher`], because ids are reliable hashes due to implementation.
+/// [`EntityComponentTable`] uses [`NoOpHasher`], because ids are reliable hashes due to implementation.
 /// This speeds up those 'amortized `O(1)`' even more.
 ///
 /// Since components are stored in columnar contiguous blocks of memory, table is optimized for fast querying,
@@ -247,55 +247,55 @@ impl_type_map!(
 /// To see more on complexity topic, you can read docs for corresponding methods.
 ///
 #[derive(Debug, Default)]
-pub(super) struct GameObjectComponentTable {
-    /// Map that tracks which position in table belongs to exact `GameObjectId`.
+pub(super) struct EntityComponentTable {
+    /// Map that tracks which position in table belongs to exact `EntityId`.
     ///
-    gameobject_map: GameObjectMap,
+    entity_map: EntityMap,
     /// Table that holds all components.
     ///
     table: IdMap<ComponentId, Vec<Option<BoxedComponent>>>,
 }
-impl GameObjectComponentTable {
-    /// Initializes new [`GameObjectComponentTable`].
+impl EntityComponentTable {
+    /// Initializes new [`EntityComponentTable`].
     ///
-    /// Created [`GameObjectComponentTable`] will not allocate until first insertions.
+    /// Created [`EntityComponentTable`] will not allocate until first insertions.
     ///
-    /// If you know how much `Component`s and `GameObject`s you are going to use,
-    /// use methods that initialize [`GameObjectComponentTable`] with capacity.
-    /// That could greatly increase performance, especially if [`GameObjectComponentTable`]
+    /// If you know how much `Component`s and `Entity`s you are going to use,
+    /// use methods that initialize [`EntityComponentTable`] with capacity.
+    /// That could greatly increase performance, especially if [`EntityComponentTable`]
     /// will need to handle frequent insertions and deletions.
     ///
-    pub(super) fn new() -> GameObjectComponentTable {
-        GameObjectComponentTable {
-            gameobject_map: GameObjectMap::new(),
+    pub(super) fn new() -> EntityComponentTable {
+        EntityComponentTable {
+            entity_map: EntityMap::new(),
             table: IdMap::with_hasher(NoOpHasherState),
         }
     }
-    /// Initializes [`GameObjectComponentTable`] with specified capacity for both `GameObject` and `Component` storage.
+    /// Initializes [`EntityComponentTable`] with specified capacity for both `Entity` and `Component` storage.
     ///
     /// Usage of this associated function should be preferred, because it can greatly increase performance
     /// by decreasing number of allocations.
     ///
     /// Use this associated function if you have an estimation on how much
-    /// `GameObject`s and `Component`s you are going to use.
+    /// `Entity`s and `Component`s you are going to use.
     /// If you are unsure of one of the capacities, pass 0 to it.
     ///
     pub(super) fn with_capacity(
-        gameobject_capacity: usize,
+        entity_capacity: usize,
         component_capacity: usize,
-    ) -> GameObjectComponentTable {
-        GameObjectComponentTable {
-            gameobject_map: GameObjectMap::with_capacity(gameobject_capacity),
+    ) -> EntityComponentTable {
+        EntityComponentTable {
+            entity_map: EntityMap::with_capacity(entity_capacity),
 
             table: IdMap::with_capacity_and_hasher(component_capacity, NoOpHasherState),
         }
     }
 
-    /// Inserts `GameObjectId` in the [`ComponentTable`].
+    /// Inserts `EntityId` in the [`ComponentTable`].
     ///
-    /// If any `GameObjectId`s were removed from [`ComponentTable`] and
-    /// their places are not yet filled, inserted `GameObjectId` gets one of theirs place.
-    /// Filling gaps between `GameObjectId`s ensures contiguity of data, and thus
+    /// If any `EntityId`s were removed from [`ComponentTable`] and
+    /// their places are not yet filled, inserted `EntityId` gets one of theirs place.
+    /// Filling gaps between `EntityId`s ensures contiguity of data, and thus
     /// provides fast querying and efficient memory usage.
     ///
     /// # Complexity
@@ -303,21 +303,21 @@ impl GameObjectComponentTable {
     /// and insertion of this value in a map if it is not already present is amortized `O(1)`.
     /// Overall complexity is amortized `O(1)`.
     ///
-    pub(super) fn insert_gameobject(&mut self, gameobject_id: GameObjectId) -> usize {
-        self.gameobject_map.get_or_insert(gameobject_id)
+    pub(super) fn insert_entity(&mut self, entity_id: EntityId) -> usize {
+        self.entity_map.get_or_insert(entity_id)
     }
-    /// Removes `GameObjectId` from the [`ComponentTable`].
+    /// Removes `EntityId` from the [`ComponentTable`].
     ///
-    /// Gaps that `GameObjectId`s leave after removal are filled with upcoming insertions.
+    /// Gaps that `EntityId`s leave after removal are filled with upcoming insertions.
     ///
     /// # Complexity
-    /// Removal requires removal of `GameObjectId` from map which is amortized `O(1)`
+    /// Removal requires removal of `EntityId` from map which is amortized `O(1)`
     /// and removal of components from columns which requires iterating through `self.component_count()` columns,
     /// so it is `O(self.component_count())`.
     /// Overall complexity is `O(self.component_count())`.
     ///
-    pub(super) fn remove_gameobject(&mut self, gameobject_id: GameObjectId) {
-        let Some(deleted_index) = self.gameobject_map.remove(&gameobject_id) else {
+    pub(super) fn remove_entity(&mut self, entity_id: EntityId) {
+        let Some(deleted_index) = self.entity_map.remove(&entity_id) else {
             return;
         };
         for components in self.table.values_mut() {
@@ -329,22 +329,22 @@ impl GameObjectComponentTable {
 
     /// Inserts column that corresponds to given `ComponentId` if not present.
     ///
-    /// This function allocates column with capacity that is equal to `self.gameobject_capacity()`.
+    /// This function allocates column with capacity that is equal to `self.entity_capacity()`.
     ///
     /// # Complexity
     /// Insertion requires insertion to map which is amortized `O(1)`.
     /// Overall complexity is amortized `O(1)`.
     ///
     pub(super) fn insert_component(&mut self, component_id: ComponentId) {
-        let gameobjects: usize = self.gameobject_count();
-        let gameobject_capacity: usize = self.gameobject_capacity();
+        let entitys: usize = self.entity_count();
+        let entity_capacity: usize = self.entity_capacity();
         self.table
             .entry(component_id)
-            .or_insert(Vec::with_capacity(gameobject_capacity))
-            .resize_with(gameobjects, || None);
+            .or_insert(Vec::with_capacity(entity_capacity))
+            .resize_with(entitys, || None);
     }
-    /// Adds component to `GameObjectId` if both `GameObjectId` and `ComponentId` are tracked by [`ComponentTable`].
-    /// If either `GameObjectId` or `ComponentId` are not present, does nothing.
+    /// Adds component to `EntityId` if both `EntityId` and `ComponentId` are tracked by [`ComponentTable`].
+    /// If either `EntityId` or `ComponentId` are not present, does nothing.
     ///
     /// This function can be also used to replace component if needed.
     ///
@@ -353,23 +353,23 @@ impl GameObjectComponentTable {
     /// and changing value in a vector which is `O(1)`.
     /// Overall complexity is amortized `O(1)`.
     ///
-    pub(super) fn add_component_to_gameobject(
+    pub(super) fn add_component_to_entity(
         &mut self,
         (component_id, component): (ComponentId, BoxedComponent),
-        gameobject_id: GameObjectId,
+        entity_id: EntityId,
     ) {
-        let Some(gameobject_index) = self.gameobject_map.get(&gameobject_id) else {
+        let Some(entity_index) = self.entity_map.get(&entity_id) else {
             return;
         };
         let Some(components) = self.table.get_mut(&component_id) else {
             return;
         };
 
-        if gameobject_index >= components.len() {
-            components.resize_with(gameobject_index + 1, || None);
+        if entity_index >= components.len() {
+            components.resize_with(entity_index + 1, || None);
         }
         let place: &mut Option<BoxedComponent> = components
-            .get_mut(gameobject_index)
+            .get_mut(entity_index)
             .expect("Existence of index has been ensured.");
         *place = Some(component);
     }
@@ -385,32 +385,32 @@ impl GameObjectComponentTable {
     ) -> Option<Vec<Option<BoxedComponent>>> {
         self.table.remove(&component_id)
     }
-    /// Removes component from `GameObjectId` if both `GameObjectId` and `ComponentId` are tracked by [`ComponentTable`].
-    /// If either `GameObjectId` or `ComponentId` are not present, does nothing.
+    /// Removes component from `EntityId` if both `EntityId` and `ComponentId` are tracked by [`ComponentTable`].
+    /// If either `EntityId` or `ComponentId` are not present, does nothing.
     ///
     /// # Complexity
     /// Removal requires 2 lookups on maps which are amortized `O(1)`
     /// and changing value in a vector which is `O(1)`.
     /// Overall complexity is amortized `O(1)`.
     ///
-    pub(super) fn remove_component_from_gameobject(
+    pub(super) fn remove_component_from_entity(
         &mut self,
         component_id: ComponentId,
-        gameobject_id: GameObjectId,
+        entity_id: EntityId,
     ) {
-        let Some(gameobject_index) = self.gameobject_map.get(&gameobject_id) else {
+        let Some(entity_index) = self.entity_map.get(&entity_id) else {
             return;
         };
         let Some(components) = self.table.get_mut(&component_id) else {
             return;
         };
-        let Some(component) = components.get_mut(gameobject_index) else {
+        let Some(component) = components.get_mut(entity_index) else {
             return;
         };
         *component = None;
     }
 
-    /// Returns component that has given `ComponentId` and is assigned to `GameObject` with given id if present,
+    /// Returns component that has given `ComponentId` and is assigned to `Entity` with given id if present,
     /// otherwise `None`.
     ///
     /// # Complexity
@@ -418,14 +418,14 @@ impl GameObjectComponentTable {
     /// and retrieving value from a vector which is `O(1)`.
     /// Overall complexity is amortized `O(1)`.
     ///
-    pub(super) fn get_gameobject_component(
+    pub(super) fn get_entity_component(
         &self,
-        gameobject_id: GameObjectId,
+        entity_id: EntityId,
         component_id: ComponentId,
     ) -> Option<&Option<BoxedComponent>> {
-        let gameobject_index: usize = self.gameobject_map.get(&gameobject_id)?;
+        let entity_index: usize = self.entity_map.get(&entity_id)?;
         let components: &Vec<Option<BoxedComponent>> = self.table.get(&component_id)?;
-        Some(components.get(gameobject_index).unwrap_or_else(|| &None))
+        Some(components.get(entity_index).unwrap_or_else(|| &None))
     }
 
     /// Returns immutable reference to components column that corresponds to given `ComponentId`.
@@ -445,13 +445,13 @@ impl GameObjectComponentTable {
         self.table.get_mut(&component_id)
     }
 
-    /// Returns the number of `GameObject`s the table can hold without reallocating.
+    /// Returns the number of `Entity`s the table can hold without reallocating.
     ///
     /// This number is a lower bound; the [`ComponentTable`] might be able to hold more,
     /// but is guaranteed to be able to hold at least this many.
     ///
-    pub(super) fn gameobject_capacity(&self) -> usize {
-        self.gameobject_map.capacity()
+    pub(super) fn entity_capacity(&self) -> usize {
+        self.entity_map.capacity()
     }
     /// Returns the number of `Component`s the table can hold without reallocating.
     ///
@@ -462,10 +462,10 @@ impl GameObjectComponentTable {
         self.table.capacity()
     }
 
-    /// Returns the number of `GameObject`s in the map.
+    /// Returns the number of `Entity`s in the map.
     ///
-    pub(super) fn gameobject_count(&self) -> usize {
-        self.gameobject_map.len()
+    pub(super) fn entity_count(&self) -> usize {
+        self.entity_map.len()
     }
     /// Returns the number of `Component`s in the map.
     ///
@@ -473,10 +473,10 @@ impl GameObjectComponentTable {
         self.table.len()
     }
 
-    /// Checks whether given `GameObjectId` is tracked by [`ComponentTable`] or not.
+    /// Checks whether given `EntityId` is tracked by [`ComponentTable`] or not.
     ///
-    pub(super) fn contains_gameobject(&self, gameobject_id: GameObjectId) -> bool {
-        self.gameobject_map.contains(&gameobject_id)
+    pub(super) fn contains_entity(&self, entity_id: EntityId) -> bool {
+        self.entity_map.contains(&entity_id)
     }
     /// Checks whether given `ComponentId` is tracked by [`ComponentTable`] or not.
     ///
@@ -802,48 +802,47 @@ mod tests {
     }
 
     #[test]
-    fn gameobject_component_storage() {
-        use super::{BoxedComponent, GameObjectComponentTable};
-        use crate::gamecore::identifiers::{ComponentId, GameObjectId};
+    fn entity_component_storage() {
+        use super::{BoxedComponent, EntityComponentTable};
+        use crate::gamecore::identifiers::{ComponentId, EntityId};
         use std::ops::Deref;
 
-        let gameobject_id0: GameObjectId = GameObjectId::new(0);
-        let gameobject_id1: GameObjectId = GameObjectId::new(1);
+        let entity_id0: EntityId = EntityId::new(0);
+        let entity_id1: EntityId = EntityId::new(1);
 
         let component_id0: ComponentId = ComponentId::new(0);
         const COMPONENT0: u8 = 0;
         let component_id1: ComponentId = ComponentId::new(1);
         const COMPONENT1: i8 = 0;
 
-        let mut component_table: GameObjectComponentTable = GameObjectComponentTable::new();
+        let mut component_table: EntityComponentTable = EntityComponentTable::new();
 
         assert!(component_table
-            .get_gameobject_component(gameobject_id0, component_id0)
+            .get_entity_component(entity_id0, component_id0)
             .is_none());
-        let _ = component_table.insert_gameobject(gameobject_id0);
+        let _ = component_table.insert_entity(entity_id0);
 
         assert!(component_table
-            .get_gameobject_component(gameobject_id0, component_id0)
+            .get_entity_component(entity_id0, component_id0)
             .is_none());
         let _ = component_table.insert_component(component_id0);
 
         assert!(component_table
-            .get_gameobject_component(gameobject_id0, component_id0)
+            .get_entity_component(entity_id0, component_id0)
             .is_some());
         assert!(component_table
-            .get_gameobject_component(gameobject_id0, component_id1)
+            .get_entity_component(entity_id0, component_id1)
             .is_none());
         assert!(component_table
-            .get_gameobject_component(gameobject_id1, component_id0)
+            .get_entity_component(entity_id1, component_id0)
             .is_none());
         assert!(component_table
-            .get_gameobject_component(gameobject_id1, component_id1)
+            .get_entity_component(entity_id1, component_id1)
             .is_none());
 
-        component_table
-            .add_component_to_gameobject((component_id0, Box::new(COMPONENT0)), gameobject_id0);
+        component_table.add_component_to_entity((component_id0, Box::new(COMPONENT0)), entity_id0);
         let retrieval: &Option<BoxedComponent> = component_table
-            .get_gameobject_component(gameobject_id0, component_id0)
+            .get_entity_component(entity_id0, component_id0)
             .expect("Component was added.");
         let retrieved_component: &BoxedComponent =
             retrieval.as_ref().expect("Component was added.");
@@ -858,46 +857,43 @@ mod tests {
 
         component_table.insert_component(component_id1);
         assert!(component_table
-            .get_gameobject_component(gameobject_id0, component_id1)
-            .expect("GameObjectId and ComponentId were inserted.")
+            .get_entity_component(entity_id0, component_id1)
+            .expect("EntityId and ComponentId were inserted.")
             .as_ref()
             .is_none());
 
-        component_table.remove_gameobject(gameobject_id0);
+        component_table.remove_entity(entity_id0);
         assert!(component_table
-            .get_gameobject_component(gameobject_id0, component_id0)
+            .get_entity_component(entity_id0, component_id0)
             .is_none());
 
-        let _ = component_table.insert_gameobject(gameobject_id0);
+        let _ = component_table.insert_entity(entity_id0);
         assert!(component_table
-            .get_gameobject_component(gameobject_id0, component_id0)
+            .get_entity_component(entity_id0, component_id0)
             .is_some());
-        let _ = component_table.insert_gameobject(gameobject_id1);
+        let _ = component_table.insert_entity(entity_id1);
         assert!(component_table
-            .get_gameobject_component(gameobject_id1, component_id0)
+            .get_entity_component(entity_id1, component_id0)
             .is_some());
 
-        component_table
-            .add_component_to_gameobject((component_id1, Box::new(COMPONENT1)), gameobject_id1);
+        component_table.add_component_to_entity((component_id1, Box::new(COMPONENT1)), entity_id1);
         assert!(component_table
-            .get_gameobject_component(gameobject_id0, component_id1)
-            .expect("GameObjectId and ComponentId were inserted.")
+            .get_entity_component(entity_id0, component_id1)
+            .expect("EntityId and ComponentId were inserted.")
             .as_ref()
             .is_none());
 
         assert!(component_table
-            .get_gameobject_component(gameobject_id1, component_id1)
-            .expect("GameObjectId and ComponentId were inserted.")
+            .get_entity_component(entity_id1, component_id1)
+            .expect("EntityId and ComponentId were inserted.")
             .as_ref()
             .is_some());
 
-        component_table
-            .add_component_to_gameobject((component_id0, Box::new(COMPONENT0)), gameobject_id0);
-        component_table
-            .add_component_to_gameobject((component_id0, Box::new(COMPONENT0)), gameobject_id1);
+        component_table.add_component_to_entity((component_id0, Box::new(COMPONENT0)), entity_id0);
+        component_table.add_component_to_entity((component_id0, Box::new(COMPONENT0)), entity_id1);
         assert_eq!(
             component_table
-                .get_gameobject_component(gameobject_id0, component_id0)
+                .get_entity_component(entity_id0, component_id0)
                 .expect("Component was added.")
                 .as_ref()
                 .expect("Component was added.")
@@ -906,7 +902,7 @@ mod tests {
                 .downcast_ref::<u8>()
                 .expect("u8 was packed."),
             component_table
-                .get_gameobject_component(gameobject_id1, component_id0)
+                .get_entity_component(entity_id1, component_id0)
                 .expect("Component was added.")
                 .as_ref()
                 .expect("Component was added.")
@@ -916,19 +912,19 @@ mod tests {
                 .expect("u8 was packed.")
         );
 
-        component_table.remove_component_from_gameobject(component_id0, gameobject_id0);
+        component_table.remove_component_from_entity(component_id0, entity_id0);
         assert!(component_table
-            .get_gameobject_component(gameobject_id0, component_id0)
-            .expect("GameObjectId and ComponentId were inserted.")
+            .get_entity_component(entity_id0, component_id0)
+            .expect("EntityId and ComponentId were inserted.")
             .as_ref()
             .is_none());
 
         let _ = component_table.remove_component(component_id0);
         assert!(component_table
-            .get_gameobject_component(gameobject_id0, component_id0)
+            .get_entity_component(entity_id0, component_id0)
             .is_none());
         assert!(component_table
-            .get_gameobject_component(gameobject_id1, component_id0)
+            .get_entity_component(entity_id1, component_id0)
             .is_none());
     }
 
