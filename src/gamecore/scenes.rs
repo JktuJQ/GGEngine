@@ -3,6 +3,6 @@
 //! [`SceneManager`] - struct that provides convenient storage for those [`Scene`]s.
 //!
 
-pub struct Scene { }
+pub struct Scene {}
 
-pub struct SceneManager { }
+pub struct SceneManager {}

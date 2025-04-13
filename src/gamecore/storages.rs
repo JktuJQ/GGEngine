@@ -3,8 +3,10 @@
 //!
 
 use crate::gamecore::{
-    components::{BoxedComponent, BoxedResource, Resource},
-    identifiers::{ComponentId, EntityId, ResourceId},
+    components::{
+        BoxedComponent, BoxedResource, Bundle, Component, ComponentId, Resource, ResourceId,
+    },
+    entities::{EntityId, EntityMut},
 };
 use std::{
     any::{Any, TypeId},
@@ -16,8 +18,7 @@ use std::{
 /// its internals through.
 ///
 /// # Usage
-/// ECS model heavily relies on fast querying and indexation of
-/// [`Component`](Component)s and [`Entity`](super::entities::Entity)s.
+/// ECS model heavily relies on fast querying and indexation of components and entities.
 /// Id structs are indices for navigating their counterparts in [`Scene`](super::scenes::Scene) storage,
 /// and those are implemented as newtype-wrappers of `u64`.
 ///
@@ -96,7 +97,7 @@ macro_rules! impl_type_map {
 
             /// Initializes given type in the map.
             /// If the map did not have this key present, None is returned.
-            /// If the map did have this key present, the value is updated, and the old value is returned.
+            /// If the map did have this key present, the value is updated and new value is returned.
             ///
             /// # Complexity
             /// Insertion and lookup in the map are both amortized `O(1)`.
@@ -171,15 +172,15 @@ macro_rules! impl_type_map {
 ///
 #[derive(Debug, Default)]
 pub(super) struct EntityMap {
-    /// Map that binds `EntityId`s to `usize`s.
+    /// Map that binds [`EntityId`]s to `usize`s.
     ///
     map: IdMap<EntityId, usize>,
-    /// Vector that holds indices that were binded to removed `EntityId`s.
+    /// Vector that holds indices that were binded to removed [`EntityId`]s.
     ///
     removed: Vec<usize>,
 }
 impl_type_map!(EntityMap, EntityId, usize, (|x| x));
-/// [`ComponentMap`] struct handles `Component` initialization by binding specific `TypeId`s to exact `ComponentId`.
+/// [`ComponentMap`] struct handles х`Component` initialization by binding specific `TypeId`s to exact `ComponentId`.
 /// This approach allows for describing `Component`s as Rust types.
 ///
 #[derive(Debug, Default)]
@@ -195,7 +196,7 @@ impl_type_map!(
     ComponentMap,
     TypeId,
     ComponentId,
-    (|x| ComponentId::new(x as u64))
+    (|x| ComponentId(x as u64))
 );
 /// [`ResourceMap`] struct handles `Resource` initialization by binding specific `TypeId`s to exact `ResourceId`.
 /// This approach allows for describing `Resource`s as Rust types.
@@ -209,26 +210,21 @@ pub(super) struct ResourceMap {
     ///
     removed: Vec<ResourceId>,
 }
-impl_type_map!(
-    ResourceMap,
-    TypeId,
-    ResourceId,
-    (|x| ResourceId::new(x as u64))
-);
+impl_type_map!(ResourceMap, TypeId, ResourceId, (|x| ResourceId(x as u64)));
 
 /// [`EntityComponentTable`] is a column-oriented structure-of-arrays based storage
-/// that maps `Entity`s to their `Component`s.
+/// that maps entities to their `Component`s.
 ///
-/// Conceptually, [`EntityComponentTable`] can be thought of as an `HashMap<ComponentId, Vec<T: Component>>`,
-/// where each `Vec` contains components of one type that belong to different `Entity`s.
+/// Conceptually, [`EntityComponentTable`] can be thought of as an `HashMap<ComponentId, Vec<C: Component>>`,
+/// where each `Vec` contains components of one type that belong to different entities.
 ///
-/// Each row corresponds to a single `Entity`
+/// Each row corresponds to a single entity
 /// (i.e. equal indices of `Vec`s point to different components on the same entity)
 /// and each column corresponds to a single `Component`
-/// (i.e. every `Vec` contains all `Component`s of one type that belong to different `Entity`s).
+/// (i.e. every `Vec` contains all `Component`s of one type that belong to different entities).
 ///
 /// Fetching components from a table involves fetching the associated column for a `Component` type
-/// (via its `ComponentId`), then fetching the `Entity`'s row within that column.
+/// (via its `ComponentId`), then fetching the entity's row within that column.
 ///
 /// # Performance
 /// [`EntityComponentTable`] uses [`NoOpHasher`], because ids are reliable hashes due to implementation.
@@ -237,7 +233,7 @@ impl_type_map!(
 /// Since components are stored in columnar contiguous blocks of memory, table is optimized for fast querying,
 /// but frequent insertion and removal can be relatively slow.
 ///
-/// Implementation with an actual table (represented by `Vec` that emulates `Vec<Vec<T: Component>>`)
+/// Implementation with an actual table (represented by `Vec` that emulates `Vec<Vec<C: Component>>`)
 /// could be a bit faster on querying due to cache locality, but insertion and removal would be very slow
 /// (insertion would require shifting most of the table and removal would too,
 /// unless we decide to just 'forget' deleted data, but this will hurt cache locality badly).
@@ -260,33 +256,29 @@ impl EntityComponentTable {
     ///
     /// Created [`EntityComponentTable`] will not allocate until first insertions.
     ///
-    /// If you know how much `Component`s and `Entity`s you are going to use,
+    /// If you know how many components and entities you are going to use,
     /// use methods that initialize [`EntityComponentTable`] with capacity.
     /// That could greatly increase performance, especially if [`EntityComponentTable`]
     /// will need to handle frequent insertions and deletions.
     ///
-    pub(super) fn new() -> EntityComponentTable {
+    pub(super) fn new() -> Self {
         EntityComponentTable {
             entity_map: EntityMap::new(),
             table: IdMap::with_hasher(NoOpHasherState),
         }
     }
-    /// Initializes [`EntityComponentTable`] with specified capacity for both `Entity` and `Component` storage.
+    /// Initializes [`EntityComponentTable`] with specified capacity for both entity and component storage.
     ///
     /// Usage of this associated function should be preferred, because it can greatly increase performance
     /// by decreasing number of allocations.
     ///
-    /// Use this associated function if you have an estimation on how much
-    /// `Entity`s and `Component`s you are going to use.
+    /// Use this associated function if you have an estimation on how many
+    /// entities and `Component`s you are going to use.
     /// If you are unsure of one of the capacities, pass 0 to it.
     ///
-    pub(super) fn with_capacity(
-        entity_capacity: usize,
-        component_capacity: usize,
-    ) -> EntityComponentTable {
+    pub(super) fn with_capacity(entity_capacity: usize, component_capacity: usize) -> Self {
         EntityComponentTable {
             entity_map: EntityMap::with_capacity(entity_capacity),
-
             table: IdMap::with_capacity_and_hasher(component_capacity, NoOpHasherState),
         }
     }
@@ -303,8 +295,8 @@ impl EntityComponentTable {
     /// and insertion of this value in a map if it is not already present is amortized `O(1)`.
     /// Overall complexity is amortized `O(1)`.
     ///
-    pub(super) fn insert_entity(&mut self, entity_id: EntityId) -> usize {
-        self.entity_map.get_or_insert(entity_id)
+    pub(super) fn insert_entity(&mut self, entity_id: EntityId) {
+        let _ = self.entity_map.get_or_insert(entity_id);
     }
     /// Removes `EntityId` from the [`ComponentTable`].
     ///
@@ -355,7 +347,7 @@ impl EntityComponentTable {
     ///
     pub(super) fn add_component_to_entity(
         &mut self,
-        (component_id, component): (ComponentId, BoxedComponent),
+        (component_id, boxed_component): (ComponentId, BoxedComponent),
         entity_id: EntityId,
     ) {
         let Some(entity_index) = self.entity_map.get(&entity_id) else {
@@ -371,7 +363,7 @@ impl EntityComponentTable {
         let place: &mut Option<BoxedComponent> = components
             .get_mut(entity_index)
             .expect("Existence of index has been ensured.");
-        *place = Some(component);
+        *place = Some(boxed_component);
     }
     /// Removes column that corresponds to given `ComponentId` if present.
     ///
@@ -410,7 +402,7 @@ impl EntityComponentTable {
         *component = None;
     }
 
-    /// Returns component that has given `ComponentId` and is assigned to `Entity` with given id if present,
+    /// Returns component that has given `ComponentId` and is assigned to entity with given id if present,
     /// otherwise `None`.
     ///
     /// # Complexity
@@ -445,7 +437,7 @@ impl EntityComponentTable {
         self.table.get_mut(&component_id)
     }
 
-    /// Returns the number of `Entity`s the table can hold without reallocating.
+    /// Returns the number of entities the table can hold without reallocating.
     ///
     /// This number is a lower bound; the [`ComponentTable`] might be able to hold more,
     /// but is guaranteed to be able to hold at least this many.
@@ -462,7 +454,7 @@ impl EntityComponentTable {
         self.table.capacity()
     }
 
-    /// Returns the number of `Entity`s in the map.
+    /// Returns the number of entities in the map.
     ///
     pub(super) fn entity_count(&self) -> usize {
         self.entity_map.len()
@@ -515,7 +507,7 @@ impl ResourceStorage {
     ///
     /// Created [`ResourceStorage`] will not allocate until first insertions.
     ///
-    pub(super) fn new() -> ResourceStorage {
+    pub(super) fn new() -> Self {
         ResourceStorage {
             resource_map: ResourceMap::new(),
             resources: IdMap::with_hasher(NoOpHasherState),
@@ -523,7 +515,7 @@ impl ResourceStorage {
     }
     /// Initializes [`ResourceStorage`] with given capacity.
     ///
-    pub(super) fn with_capacity(capacity: usize) -> ResourceStorage {
+    pub(super) fn with_capacity(capacity: usize) -> Self {
         ResourceStorage {
             resource_map: ResourceMap::with_capacity(capacity),
             resources: IdMap::with_capacity_and_hasher(capacity, NoOpHasherState),
@@ -541,8 +533,8 @@ impl ResourceStorage {
     /// but usage of typed API would still be unsound, since downcasting would fail.
     /// Prefer using `init_resource_by_id` for this situation.
     ///
-    pub(super) fn init_resource<T: Resource>(&mut self) -> ResourceId {
-        self.resource_map.get_or_insert(TypeId::of::<T>())
+    pub(super) fn init_resource<R: Resource>(&mut self) -> ResourceId {
+        self.resource_map.get_or_insert(TypeId::of::<R>())
     }
     /// Initializes new `ResourceId` if a `ResourceId` with given value does not exist.
     /// (this function is a counterpart of `init_resource` - read [`ResourceStorage`] 'usage' section).
@@ -554,7 +546,7 @@ impl ResourceStorage {
     /// because typed API tries to use the lowest id when possible.
     ///
     pub(super) fn init_resource_by_id(&mut self, resource_id: u64) -> Option<ResourceId> {
-        let resource_id: ResourceId = ResourceId::new(resource_id);
+        let resource_id: ResourceId = ResourceId(resource_id);
         match self.resources.contains_key(&resource_id) {
             true => Some(resource_id),
             false => None,
@@ -567,13 +559,13 @@ impl ResourceStorage {
     /// If you insert a resource of a type that already exists,
     /// you will overwrite any existing data and this function will return old value.
     ///
-    pub(super) fn insert_resource<T: Resource>(&mut self, value: T) -> Option<T> {
+    pub(super) fn insert_resource<R: Resource>(&mut self, value: R) -> Option<R> {
         self.resources
-            .insert(self.resource_map.get_or_insert(TypeId::of::<T>()), Box::new(value))
+            .insert(self.resource_map.get_or_insert(TypeId::of::<R>()), Box::new(value))
             .map(|boxed_resource| {
                 *(boxed_resource
                     .as_any_box()
-                    .downcast::<T>()
+                    .downcast::<R>()
                     .expect("This type's id should correspond to this value - otherwise an error was made in `*_by_id` functions."))
             })
     }
@@ -597,12 +589,12 @@ impl ResourceStorage {
     /// Removes the resource of a given type and returns it, if it exists.
     /// Otherwise, returns None.
     ///
-    pub(super) fn remove_resource<T: Resource>(&mut self) -> Option<T> {
-        let resource_id: ResourceId = self.resource_map.remove(&TypeId::of::<T>())?;
+    pub(super) fn remove_resource<R: Resource>(&mut self) -> Option<R> {
+        let resource_id: ResourceId = self.resource_map.remove(&TypeId::of::<R>())?;
         self.resources.remove(&resource_id).map(|boxed_resource| {
             *(boxed_resource
                 .as_any_box()
-                .downcast::<T>()
+                .downcast::<R>()
                 .expect("This type's id corresponds to this value."))
         })
     }
@@ -618,10 +610,10 @@ impl ResourceStorage {
             .map(|boxed_resource| boxed_resource.as_any_box())
     }
 
-    /// Returns whether a resource of type T exists or not.
+    /// Returns whether a resource of type R exists or not.
     ///
-    pub(super) fn contains_resource<T: Resource>(&mut self) -> bool {
-        self.resource_map.get(&TypeId::of::<T>()).is_some()
+    pub(super) fn contains_resource<R: Resource>(&mut self) -> bool {
+        self.resource_map.get(&TypeId::of::<R>()).is_some()
     }
     /// Returns true if given `ResourceId` is registered in [`ResourceStorage`]
     /// (this function is a counterpart of `contains_resource` - read [`ResourceStorage`] 'usage' section).
@@ -632,10 +624,10 @@ impl ResourceStorage {
 
     /// Gets a reference to the resource of the given type if it exists.
     ///
-    pub(super) fn get_resource<T: Resource>(&self) -> Option<&T> {
-        let resource_id: ResourceId = self.resource_map.get(&TypeId::of::<T>())?;
+    pub(super) fn get_resource<R: Resource>(&self) -> Option<&R> {
+        let resource_id: ResourceId = self.resource_map.get(&TypeId::of::<R>())?;
         let boxed_resource: &BoxedResource = self.resources.get(&resource_id)?;
-        (**boxed_resource).as_any_ref().downcast_ref::<T>()
+        (**boxed_resource).as_any_ref().downcast_ref::<R>()
     }
     /// Gets a reference to the resource that corresponds to given `ResourceId` if it exists
     /// (this function is a counterpart of `get_resource` - read [`ResourceStorage`] 'usage' section).
@@ -647,10 +639,10 @@ impl ResourceStorage {
     }
     /// Gets a mutable reference to the resource of the given type if it exists.
     ///
-    pub(super) fn get_resource_mut<T: Resource>(&mut self) -> Option<&mut T> {
-        let resource_id: ResourceId = self.resource_map.get(&TypeId::of::<T>())?;
+    pub(super) fn get_resource_mut<R: Resource>(&mut self) -> Option<&mut R> {
+        let resource_id: ResourceId = self.resource_map.get(&TypeId::of::<R>())?;
         let boxed_resource: &mut BoxedResource = self.resources.get_mut(&resource_id)?;
-        (**boxed_resource).as_any_mut().downcast_mut::<T>()
+        (**boxed_resource).as_any_mut().downcast_mut::<R>()
     }
     /// Gets a mutable reference to the resource that corresponds to given `ResourceId` if it exists
     /// (this function is a counterpart of `get_resource_mut` - read [`ResourceStorage`] 'usage' section).
@@ -667,17 +659,17 @@ impl ResourceStorage {
     /// otherwise inserts the resource that is constructed by given closure and
     /// returns mutable reference to it.
     ///
-    pub(super) fn get_resource_or_insert_with<T: Resource>(
+    pub(super) fn get_resource_or_insert_with<R: Resource>(
         &mut self,
-        f: impl FnOnce() -> T,
-    ) -> &mut T {
-        let resource_id: ResourceId = self.resource_map.get_or_insert(TypeId::of::<T>());
+        f: impl FnOnce() -> R,
+    ) -> &mut R {
+        let resource_id: ResourceId = self.resource_map.get_or_insert(TypeId::of::<R>());
         (**self
             .resources
             .entry(resource_id)
             .or_insert_with(|| Box::new(f())))
         .as_any_mut()
-        .downcast_mut::<T>()
+        .downcast_mut::<R>()
         .expect("This type's id corresponds to this value.")
     }
     /// Gets a mutable reference to the resource that corresponds to given `ResourceId` if it exists,
@@ -713,8 +705,7 @@ mod tests {
 
     #[test]
     fn component_map() {
-        use super::ComponentMap;
-        use crate::gamecore::identifiers::ComponentId;
+        use super::{ComponentId, ComponentMap};
 
         let mut component_map: ComponentMap = ComponentMap::new();
 
@@ -758,8 +749,7 @@ mod tests {
 
     #[test]
     fn resource_map() {
-        use super::ResourceMap;
-        use crate::gamecore::identifiers::ResourceId;
+        use super::{ResourceId, ResourceMap};
 
         let mut resource_map: ResourceMap = ResourceMap::new();
 
@@ -803,16 +793,15 @@ mod tests {
 
     #[test]
     fn entity_component_storage() {
-        use super::{BoxedComponent, EntityComponentTable};
-        use crate::gamecore::identifiers::{ComponentId, EntityId};
+        use super::{BoxedComponent, ComponentId, EntityComponentTable, EntityId};
         use std::ops::Deref;
 
-        let entity_id0: EntityId = EntityId::new(0);
-        let entity_id1: EntityId = EntityId::new(1);
+        let entity_id0: EntityId = EntityId(0);
+        let entity_id1: EntityId = EntityId(1);
 
-        let component_id0: ComponentId = ComponentId::new(0);
+        let component_id0: ComponentId = ComponentId(0);
         const COMPONENT0: u8 = 0;
-        let component_id1: ComponentId = ComponentId::new(1);
+        let component_id1: ComponentId = ComponentId(1);
         const COMPONENT1: i8 = 0;
 
         let mut component_table: EntityComponentTable = EntityComponentTable::new();

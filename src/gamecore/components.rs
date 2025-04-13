@@ -141,6 +141,13 @@ impl fmt::Debug for dyn Component {
 /// (`Vec`, iterator, etc.).
 ///
 pub type BoxedComponent = Box<dyn Component>;
+/// [`ComponentId`] id struct is needed to identify [`Component`]s in [`Scene`](super::scenes::Scene).
+///
+/// It is assigned by the [`Scene`](super::scenes::Scene) in
+/// which entity with this [`Component`] is registered.
+///
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ComponentId(pub(super) u64);
 
 /// [`Bundle`] trait defines a set of [`Component`]s.
 ///
@@ -406,3 +413,9 @@ impl fmt::Debug for dyn Resource {
 /// (`Vec`, iterator, etc.).
 ///
 pub type BoxedResource = Box<dyn Resource>;
+/// [`ResourceId`] id struct is needed to identify [`Resource`]s in [`Scene`](super::scenes::Scene).
+///
+/// It is assigned by the [`Scene`](super::scenes::Scene) in which this [`Resource`] is registered.
+///
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ResourceId(pub(super) u64);
