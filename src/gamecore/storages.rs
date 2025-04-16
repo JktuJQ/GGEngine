@@ -81,19 +81,6 @@ macro_rules! impl_type_map {
                     removed: Vec::new(),
                 }
             }
-            /// Initializes an empty map that uses [`NoOpHasher`] internally
-            /// with at least the specified capacity.
-            ///
-            /// The map will be able to hold at least `capacity` elements without reallocating.
-            /// This method is allowed to allocate for more elements than `capacity`.
-            /// If `capacity` is 0, it will not allocate.
-            ///
-            pub(super) fn with_capacity(capacity: usize) -> Self {
-                Self {
-                    map: IdMap::with_capacity_and_hasher(capacity, NoOpHasherState),
-                    removed: Vec::with_capacity(capacity),
-                }
-            }
 
             /// Initializes given type in the map.
             /// If the map did not have this key present, None is returned.
@@ -141,14 +128,6 @@ macro_rules! impl_type_map {
                 self.map.contains_key(id)
             }
 
-            /// Returns the number of elements the map can hold without reallocating.
-            ///
-            /// This number is a lower bound; the map might be able to hold more,
-            /// but is guaranteed to be able to hold at least this many.
-            ///
-            pub(super) fn capacity(&self) -> usize {
-                self.map.capacity()
-            }
             /// Returns the number of elements in the map.
             ///
             pub(super) fn len(&self) -> usize {
@@ -267,21 +246,6 @@ impl EntityComponentTable {
             table: IdMap::with_hasher(NoOpHasherState),
         }
     }
-    /// Initializes [`EntityComponentTable`] with specified capacity for both entity and component storage.
-    ///
-    /// Usage of this associated function should be preferred, because it can greatly increase performance
-    /// by decreasing number of allocations.
-    ///
-    /// Use this associated function if you have an estimation on how many
-    /// entities and `Component`s you are going to use.
-    /// If you are unsure of one of the capacities, pass 0 to it.
-    ///
-    pub(super) fn with_capacity(entity_capacity: usize, component_capacity: usize) -> Self {
-        EntityComponentTable {
-            entity_map: EntityMap::with_capacity(entity_capacity),
-            table: IdMap::with_capacity_and_hasher(component_capacity, NoOpHasherState),
-        }
-    }
 
     /// Inserts `EntityId` in the [`ComponentTable`].
     ///
@@ -298,28 +262,28 @@ impl EntityComponentTable {
     pub(super) fn insert_entity(&mut self, entity_id: EntityId) {
         let _ = self.entity_map.get_or_insert(entity_id);
     }
-    /// Removes `EntityId` from the [`ComponentTable`].
+    /// Removes [`EntityId`] from the [`ComponentTable`].
+    /// Returns `None` if entity was not in the table.
     ///
-    /// Gaps that `EntityId`s leave after removal are filled with upcoming insertions.
+    /// Gaps that [`EntityId`]s leave after removal are filled with upcoming insertions.
     ///
     /// # Complexity
-    /// Removal requires removal of `EntityId` from map which is amortized `O(1)`
+    /// Removal requires removal of [`EntityId`] from map which is amortized `O(1)`
     /// and removal of components from columns which requires iterating through `self.component_count()` columns,
     /// so it is `O(self.component_count())`.
     /// Overall complexity is `O(self.component_count())`.
     ///
-    pub(super) fn remove_entity(&mut self, entity_id: EntityId) {
-        let Some(deleted_index) = self.entity_map.remove(&entity_id) else {
-            return;
-        };
+    pub(super) fn remove_entity(&mut self, entity_id: EntityId) -> Option<EntityId> {
+        let deleted_index = self.entity_map.remove(&entity_id)?;
         for components in self.table.values_mut() {
             if let Some(component) = components.get_mut(deleted_index) {
                 *component = None;
             }
         }
+        Some(entity_id)
     }
 
-    /// Inserts column that corresponds to given `ComponentId` if not present.
+    /// Inserts column that corresponds to given [`ComponentId`] if not present.
     ///
     /// This function allocates column with capacity that is equal to `self.entity_capacity()`.
     ///
@@ -328,15 +292,15 @@ impl EntityComponentTable {
     /// Overall complexity is amortized `O(1)`.
     ///
     pub(super) fn insert_component(&mut self, component_id: ComponentId) {
-        let entitys: usize = self.entity_count();
+        let entities: usize = self.entity_count();
         let entity_capacity: usize = self.entity_capacity();
         self.table
             .entry(component_id)
             .or_insert(Vec::with_capacity(entity_capacity))
-            .resize_with(entitys, || None);
+            .resize_with(entities, || None);
     }
-    /// Adds component to `EntityId` if both `EntityId` and `ComponentId` are tracked by [`ComponentTable`].
-    /// If either `EntityId` or `ComponentId` are not present, does nothing.
+    /// Adds component to [`EntityId`] if both [`EntityId`] and [`ComponentId`] are tracked by [`ComponentTable`].
+    /// If either [`EntityId`] or [`ComponentId`] are not present, does nothing.
     ///
     /// This function can be also used to replace component if needed.
     ///
@@ -365,7 +329,7 @@ impl EntityComponentTable {
             .expect("Existence of index has been ensured.");
         *place = Some(boxed_component);
     }
-    /// Removes column that corresponds to given `ComponentId` if present.
+    /// Removes column that corresponds to given [`ComponentId`] if present.
     ///
     /// # Complexity
     /// Removal requires removing key from map which is amortized `O(1)`.
@@ -377,8 +341,9 @@ impl EntityComponentTable {
     ) -> Option<Vec<Option<BoxedComponent>>> {
         self.table.remove(&component_id)
     }
-    /// Removes component from `EntityId` if both `EntityId` and `ComponentId` are tracked by [`ComponentTable`].
-    /// If either `EntityId` or `ComponentId` are not present, does nothing.
+    /// Removes component from [`EntityId`] if both [`EntityId`] and [`ComponentId`] are tracked by [`ComponentTable`].
+    /// If either [`EntityId`] or [`ComponentId`] are not present, returns `None`,
+    /// otherwise returns removed component.
     ///
     /// # Complexity
     /// Removal requires 2 lookups on maps which are amortized `O(1)`
@@ -389,20 +354,14 @@ impl EntityComponentTable {
         &mut self,
         component_id: ComponentId,
         entity_id: EntityId,
-    ) {
-        let Some(entity_index) = self.entity_map.get(&entity_id) else {
-            return;
-        };
-        let Some(components) = self.table.get_mut(&component_id) else {
-            return;
-        };
-        let Some(component) = components.get_mut(entity_index) else {
-            return;
-        };
-        *component = None;
+    ) -> Option<BoxedComponent> {
+        let entity_index: usize = self.entity_map.get(&entity_id)?;
+        let components: &mut Vec<Option<BoxedComponent>> = self.table.get_mut(&component_id)?;
+        let component: &mut Option<BoxedComponent> = components.get_mut(entity_index)?;
+        component.take()
     }
 
-    /// Returns component that has given `ComponentId` and is assigned to entity with given id if present,
+    /// Returns component that has given [`ComponentId`] and is assigned to entity with given id if present,
     /// otherwise `None`.
     ///
     /// # Complexity
@@ -420,7 +379,7 @@ impl EntityComponentTable {
         Some(components.get(entity_index).unwrap_or_else(|| &None))
     }
 
-    /// Returns immutable reference to components column that corresponds to given `ComponentId`.
+    /// Returns immutable reference to components column that corresponds to given [`ComponentId`].
     ///
     pub(super) fn get_components(
         &self,
@@ -428,7 +387,7 @@ impl EntityComponentTable {
     ) -> Option<&Vec<Option<BoxedComponent>>> {
         self.table.get(&component_id)
     }
-    /// Returns mutable reference to components column that corresponds to given `ComponentId`.
+    /// Returns mutable reference to components column that corresponds to given [`ComponentId`].
     ///
     pub(super) fn get_components_mut(
         &mut self,
@@ -445,7 +404,7 @@ impl EntityComponentTable {
     pub(super) fn entity_capacity(&self) -> usize {
         self.entity_map.capacity()
     }
-    /// Returns the number of `Component`s the table can hold without reallocating.
+    /// Returns the number of [`Component`]s the table can hold without reallocating.
     ///
     /// This number is a lower bound; the [`ComponentTable`] might be able to hold more,
     /// but is guaranteed to be able to hold at least this many.
@@ -511,14 +470,6 @@ impl ResourceStorage {
         ResourceStorage {
             resource_map: ResourceMap::new(),
             resources: IdMap::with_hasher(NoOpHasherState),
-        }
-    }
-    /// Initializes [`ResourceStorage`] with given capacity.
-    ///
-    pub(super) fn with_capacity(capacity: usize) -> Self {
-        ResourceStorage {
-            resource_map: ResourceMap::with_capacity(capacity),
-            resources: IdMap::with_capacity_and_hasher(capacity, NoOpHasherState),
         }
     }
 
