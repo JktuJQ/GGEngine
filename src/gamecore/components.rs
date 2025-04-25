@@ -33,8 +33,8 @@ pub(in crate::gamecore) mod as_any {
 
     /// [`AsAny`] trait is a workaround for trait upcasting.
     ///
-    /// [`AsAny`] trait blanked implementation for all types that implement `Any`
-    /// allows for `&self` to coerce to `&dyn Any`.
+    /// [`AsAny`] trait blanket implementation for all types that implement `Any`
+    /// allows for `&self` to coerce to `&dyn Any` (and similar coercions as well).
     ///
     pub trait AsAny {
         /// Method that coerces `&self` to `&dyn Any`.
@@ -146,8 +146,16 @@ pub type BoxedComponent = Box<dyn Component>;
 /// It is assigned by the [`Scene`](super::scenes::Scene) in
 /// which entity with this [`Component`] is registered.
 ///
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ComponentId(pub(super) u64);
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(super) struct ComponentId(TypeId);
+impl ComponentId {
+    /// Returns [`ComponentId`] of given [`Component`] type.
+    ///
+    pub(super) fn of<C: Component>() -> Self {
+        ComponentId(TypeId::of::<C>())
+    }
+}
+
 
 /// [`Bundle`] trait defines a set of [`Component`]s.
 ///
@@ -417,5 +425,12 @@ pub type BoxedResource = Box<dyn Resource>;
 ///
 /// It is assigned by the [`Scene`](super::scenes::Scene) in which this [`Resource`] is registered.
 ///
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ResourceId(pub(super) u64);
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(super) struct ResourceId(TypeId);
+impl ResourceId {
+    /// Returns [`ResourceId`] of given [`Resource`] type.
+    ///
+    pub(super) fn of<R: Resource>() -> Self {
+        ResourceId(TypeId::of::<R>())
+    }
+}
