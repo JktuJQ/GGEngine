@@ -2,14 +2,16 @@
 //! are used to store ECS-related data for game engine.
 //!
 
+use crate::gamecore::components::as_any::AsAny;
 use crate::gamecore::{
     components::{
-        BoxedComponent, BoxedResource, Bundle, Component, ComponentId, Resource, ResourceId,
+        BoxedComponent, BoxedResource, Bundle, BundledComponent, Component, ComponentId, Resource,
+        ResourceId,
     },
     entities::{EntityId, EntityMut},
 };
 use std::{
-    collections::{HashSet, HashMap},
+    collections::{HashMap, HashSet},
     hash::{BuildHasher, Hasher},
 };
 
@@ -100,6 +102,13 @@ type IdMap<K, V> = HashMap<K, V, NoOpHasherState>;
 ///
 #[derive(Debug, Default)]
 pub(super) struct EntityComponentStorage {
+    /// Set of inserted entities.
+    ///
+    inserted_entities: IdSet<EntityId>,
+    /// Vector of removed entities.
+    ///
+    removed_entities: Vec<EntityId>,
+
     /// Table that holds all components.
     ///
     table: IdMap<ComponentId, Vec<Option<BoxedComponent>>>,
@@ -116,11 +125,196 @@ impl EntityComponentStorage {
     ///
     pub(super) fn new() -> Self {
         EntityComponentStorage {
+            inserted_entities: IdSet::with_hasher(NoOpHasherState),
+            removed_entities: Vec::new(),
+
             table: IdMap::with_hasher(NoOpHasherState),
         }
     }
 
+    /// Inserts new entity supplying it with bundle.
+    ///
+    /// Main feature of this function is that it allows to pass additional capacity,
+    /// which will allow for allocation optimizations.
+    ///
+    fn insert_entity_with_capacity(
+        &mut self,
+        bundle: impl Bundle,
+        entities_count_capacity: usize,
+    ) -> EntityMut {
+        let entity_id: EntityId = match self.removed_entities.pop() {
+            Some(id) => id,
+            None => EntityId::new(self.inserted_entities.len() as u64),
+        };
+        self.inserted_entities.insert(entity_id);
 
+        for bundled_component in bundle.bundled_components() {
+            self.insert_bundled_component_with_capacity(
+                entity_id,
+                bundled_component,
+                entities_count_capacity,
+            );
+        }
+
+        EntityMut::new(entity_id, self)
+    }
+
+    /// Inserts bundled component into existing entity.
+    ///
+    /// Main feature of this function is that it allows to pass additional capacity,
+    /// which will allow for allocation optimizations.
+    ///
+    fn insert_bundled_component_with_capacity(
+        &mut self,
+        entity_id: EntityId,
+        bundled_component: BundledComponent,
+        entities_count_capacity: usize,
+    ) -> Option<BoxedComponent> {
+        let entity_index: usize = entity_id.id() as usize;
+        let (component_id, boxed_component): (ComponentId, BoxedComponent) =
+            bundled_component.destructure();
+
+        let components: &mut Vec<Option<BoxedComponent>> = self
+            .table
+            .entry(component_id)
+            .or_insert(Vec::with_capacity(entities_count_capacity));
+        if components.len() <= entity_index {
+            components.resize_with(
+                if entities_count_capacity == 0 {
+                    entity_index
+                } else {
+                    entities_count_capacity
+                },
+                || None,
+            );
+        }
+
+        components[entity_index].replace(boxed_component)
+    }
+
+    /// Inserts empty entity into [`EntityComponentStorage`] and returns mutable reference to it,
+    /// so it could be further modified.
+    ///
+    pub(super) fn insert_entity_empty(&mut self) -> EntityMut {
+        self.insert_entity(())
+    }
+    /// Inserts entity with components that are given in a [`Bundle`]
+    /// into [`EntityComponentStorage`] and returns mutable reference to it,
+    /// so it could be further modified.
+    ///
+    pub(super) fn insert_entity(&mut self, bundle: impl Bundle) -> EntityMut {
+        self.insert_entity_with_capacity(bundle, 0)
+    }
+    /// Inserts multiple entities with components that are given in [`Bundle`]s
+    /// into [`EntityComponentStorage`] and returns mutable reference to it,
+    /// so it could be further modified.
+    ///
+    /// It is more efficient than calling `EntityComponentStorage::insert_entity` in a loop.
+    ///
+    pub(super) fn insert_entities(
+        &mut self,
+        bundles: impl IntoIterator<Item = impl Bundle> + ExactSizeIterator,
+    ) {
+        let added_count: usize = bundles.len();
+        let resizing_usize: usize = if added_count >= self.removed_entities.len() {
+            self.inserted_entities.len() + added_count - self.removed_entities.len()
+        } else {
+            0
+        };
+
+        for bundle in bundles {
+            let _ = self.insert_entity_with_capacity(bundle, resizing_usize);
+        }
+    }
+    /// Removes entity from [`EntityComponentStorage`] by removing all of its components.
+    ///
+    pub(super) fn remove_entity(&mut self, entity_id: EntityId) {
+        let was_present: bool = self.inserted_entities.remove(&entity_id);
+        if !was_present {
+            return;
+        }
+
+        let entity_index: usize = entity_id.id() as usize;
+
+        self.removed_entities.push(entity_id);
+        for components in self.table.values_mut() {
+            if components.len() > entity_index {
+                components[entity_index] = None;
+            }
+        }
+    }
+
+    /// Inserts component to given entity.
+    ///
+    pub(super) fn insert_component<C: Component>(
+        &mut self,
+        entity_id: EntityId,
+        component: C,
+    ) -> Option<C> {
+        self.insert_bundled_component_with_capacity(
+            entity_id,
+            BundledComponent::bundle(component),
+            0,
+        )
+        .map(|boxed_component| {
+            *(boxed_component
+                .as_any_box()
+                .downcast::<C>()
+                .expect("This type corresponds to this value."))
+        })
+    }
+    /// Inserts bundle of components to given entity.
+    ///
+    pub(super) fn insert_bundle(&mut self, entity_id: EntityId, bundle: impl Bundle) {
+        for bundled_component in bundle.bundled_components() {
+            self.insert_bundled_component_with_capacity(entity_id, bundled_component, 0);
+        }
+    }
+    /// Removes component from an entity and returns the old value if present.
+    ///
+    pub(super) fn remove_component<C: Component>(&mut self, entity_id: EntityId) -> Option<C> {
+        self.table
+            .get_mut(&ComponentId::of::<C>())?
+            .get_mut(entity_id.id() as usize)?
+            .take()
+            .map(|boxed_component| {
+                *(boxed_component
+                    .as_any_box()
+                    .downcast::<C>()
+                    .expect("This type corresponds to this value."))
+            })
+    }
+    /// Returns immutable reference to the component of given entity if present.
+    ///
+    pub(super) fn get_component<C: Component>(&self, entity_id: EntityId) -> Option<&C> {
+        self.table
+            .get(&ComponentId::of::<C>())?
+            .get(entity_id.id() as usize)?
+            .as_ref()
+            .map(|boxed_component| {
+                (**boxed_component)
+                    .as_any_ref()
+                    .downcast_ref::<C>()
+                    .expect("This type corresponds to this value.")
+            })
+    }
+    /// Returns mutable reference to the component of given entity if present.
+    ///
+    pub(super) fn get_component_mut<C: Component>(
+        &mut self,
+        entity_id: EntityId,
+    ) -> Option<&mut C> {
+        self.table
+            .get_mut(&ComponentId::of::<C>())?
+            .get_mut(entity_id.id() as usize)?
+            .as_mut()
+            .map(|boxed_component| {
+                (**boxed_component)
+                    .as_any_mut()
+                    .downcast_mut::<C>()
+                    .expect("This type corresponds to this value.")
+            })
+    }
 }
 
 /// [`ResourceStorage`] struct provides API for a storage of `Resource`s.
@@ -159,7 +353,7 @@ impl ResourceStorage {
                 *(boxed_resource
                     .as_any_box()
                     .downcast::<R>()
-                    .expect("This type's id corresponds to this value."))
+                    .expect("This type corresponds to this value."))
             })
     }
 
@@ -173,7 +367,7 @@ impl ResourceStorage {
                 *(boxed_resource
                     .as_any_box()
                     .downcast::<R>()
-                    .expect("This type's id corresponds to this value."))
+                    .expect("This type corresponds to this value."))
             })
     }
 
@@ -212,7 +406,7 @@ impl ResourceStorage {
             .or_insert_with(|| Box::new(f()))))
         .as_any_mut()
         .downcast_mut::<R>()
-        .expect("This type's id corresponds to this value.")
+        .expect("This type corresponds to this value.")
     }
 
     /// Clears storage, removing all data. Keeps the allocated memory.

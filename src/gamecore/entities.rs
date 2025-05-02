@@ -11,7 +11,20 @@ use crate::gamecore::storages::EntityComponentStorage;
 /// this [`Entity`](super::entities::Entity) is registered.
 ///
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct EntityId(pub(super) u64);
+pub struct EntityId(u64);
+impl EntityId {
+    /// Creates new [`EntityId`] from id.
+    ///
+    pub(super) fn new(id: u64) -> EntityId {
+        EntityId(id)
+    }
+
+    /// Returns id that corresponds to this [`EntityId`].
+    ///
+    pub(super) fn id(self) -> u64 {
+        self.0
+    }
+}
 
 /// [`EntityMut`] provides mutable access to a single entity and all of its components.
 ///

@@ -156,7 +156,46 @@ impl ComponentId {
     }
 }
 
+/// [`BundledComponent`] represents component with its type metadata.
+///
+/// `ggengine` uses dynamic dispatch to implement ECS architecture,
+/// and so, it needs information about types.
+/// [`BoxedComponent`] allows erasing type to restore it later,
+/// but without type hint that will be impossible.
+/// [`BundledComponent`] solves that problem - constructing this struct
+/// automatically records necessary metadata.
+///
+/// # Usage
+/// This struct is most commonly used in [`Bundle`] implementations,
+/// because it ensures that the implementations could not mismatch type information.
+///
+#[derive(Debug)]
+pub struct BundledComponent {
+    /// Type metadata of component.
+    ///
+    component_id: ComponentId,
+    /// Boxed component.
+    ///
+    boxed_component: BoxedComponent,
+}
+impl BundledComponent {
+    /// Constructs [`BundledComponent`] from [`Component`],
+    /// additionally recording necessary metadata.
+    ///
+    pub fn bundle<C: Component>(component: C) -> BundledComponent {
+        BundledComponent {
+            component_id: ComponentId::of::<C>(),
+            boxed_component: Box::new(component),
+        }
+    }
 
+    /// Destructures [`BundledComponent`],
+    /// returning type information of component and its boxed value.
+    ///
+    pub(super) fn destructure(self) -> (ComponentId, BoxedComponent) {
+        (self.component_id, self.boxed_component)
+    }
+}
 /// [`Bundle`] trait defines a set of [`Component`]s.
 ///
 /// In ECS, components define objects and systems operate on combinations of components.
@@ -229,9 +268,8 @@ impl ComponentId {
 /// However, tuples do not support the struct update syntax
 /// and for complex cases, their initialization is inconvenient.
 ///
-/// That is where you have two options.
-/// 1. You can use extension trait pattern to define constructors
-/// for tuples:
+/// That is where you have three options.
+/// 1. You can use extension trait pattern to define constructors for tuples:
 /// ```rust
 /// # use ggengine::gamecore::components::Component;
 /// # #[derive(Default)]
@@ -267,8 +305,7 @@ impl ComponentId {
 ///
 /// 2. You can implement [`Bundle`] trait leveraging provided implementation to construct your own:
 /// ```rust
-/// # use ggengine::gamecore::components::{Bundle, Component, BoxedComponent};
-/// # use std::any::TypeId;
+/// # use ggengine::gamecore::components::{Bundle, Component, BundledComponent};
 /// # #[derive(Default)]
 /// # struct Player;
 /// # impl Component for Player {}
@@ -291,8 +328,8 @@ impl ComponentId {
 ///     position: Position,
 /// }
 /// impl Bundle for PlayerBundle {
-///     fn components(self) -> impl IntoIterator<Item = (TypeId, BoxedComponent)> {
-///         (self.player, self.name, self.position).components()
+///     fn bundled_components(self) -> impl IntoIterator<Item = BundledComponent> {
+///         (self.player, self.name, self.position).bundled_components()
 ///     }
 /// }
 ///
@@ -304,38 +341,34 @@ impl ComponentId {
 /// That approach allows to free yourself from all restrictions,
 /// and just 'pack a bundle' at the very end.
 ///
-/// # Manual implementation
-/// `Bundle::components` function must return `impl IntoIterator<Item = (TypeId, BoxedComponent)>`.
-/// That `TypeId` is needed for dynamic dispatch of [`Component`] types in the ECS storage.
-/// Implementation of this trait should ensure that every `TypeId` matches with
-/// the type of corresponding [`Component`] that is boxed.
-///
-/// Here is an example on how to correctly implement [`Bundle`] trait:
+/// 3. You can manually implement [`Bundle`] trait by using [`BundledComponent`]:
 /// ```rust
-/// # use ggengine::gamecore::components::{BoxedComponent, Bundle, Component};
-/// # use std::any::TypeId;
-/// # use std::iter::once;
+/// # use ggengine::gamecore::components::{Bundle, Component, BundledComponent};
 /// struct PackedBundle<T> {
 ///     inner_component: T
 /// }
 /// impl<T: Component> Bundle for PackedBundle<T> {
-///     fn components(self) -> impl IntoIterator<Item=(TypeId, BoxedComponent)> {
-///         let boxed_component: BoxedComponent = Box::new(self.inner_component);
-///         once((TypeId::of::<T>(), boxed_component))
+///     fn bundled_components(self) -> impl IntoIterator<Item = BundledComponent> {
+///         BundledComponent::bundle(self.inner_component).bundled_components()
 ///     }
 /// }
 /// ```
-/// `ggengine` advises not to implement [`Bundle`] manually unless you really need it.
+/// [`BundledComponent`] ensures that the implementation is correct,
+/// because it automatically records necessary metadata of component.
 ///
 pub trait Bundle {
-    /// Consumes itself and returns list of [`BoxedComponent`]s.
+    /// Consumes itself and returns iterator of [`BundledComponent`]s.
     ///
-    fn components(self) -> impl IntoIterator<Item = (TypeId, BoxedComponent)>;
+    fn bundled_components(self) -> impl IntoIterator<Item = BundledComponent>;
 }
 impl<T: Component> Bundle for T {
-    fn components(self) -> impl IntoIterator<Item = (TypeId, BoxedComponent)> {
-        let boxed_self: BoxedComponent = Box::new(self);
-        once((TypeId::of::<T>(), boxed_self))
+    fn bundled_components(self) -> impl IntoIterator<Item = BundledComponent> {
+        BundledComponent::bundle(self).bundled_components()
+    }
+}
+impl Bundle for BundledComponent {
+    fn bundled_components(self) -> impl IntoIterator<Item = BundledComponent> {
+        once(self)
     }
 }
 /// [`impl_bundle`] macro implements [`Bundle`] trait for tuples of arity 12 or less.
@@ -344,7 +377,7 @@ macro_rules! impl_bundle {
     () => {
         impl Bundle for ()
         {
-            fn components(self) -> impl IntoIterator<Item = (TypeId, BoxedComponent)> {
+            fn bundled_components(self) -> impl IntoIterator<Item = BundledComponent> {
                 empty()
             }
         }
@@ -352,8 +385,8 @@ macro_rules! impl_bundle {
     (($t_start:ident, $index_start:tt), $(($t:ident, $index:tt),)*) => {
         impl<$t_start: Bundle, $($t: Bundle),*> Bundle for ($t_start, $($t,)*)
         {
-            fn components(self) -> impl IntoIterator<Item = (TypeId, BoxedComponent)> {
-                self.$index_start.components().into_iter()$(.chain(self.$index.components().into_iter()))*
+            fn bundled_components(self) -> impl IntoIterator<Item = BundledComponent> {
+                self.$index_start.bundled_components().into_iter()$(.chain(self.$index.bundled_components().into_iter()))*
             }
         }
         impl_bundle!($(($t, $index),)*);
