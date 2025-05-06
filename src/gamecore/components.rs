@@ -10,56 +10,6 @@ use std::{
     iter::{empty, once},
 };
 
-/// `as_any` hidden module is needed to hide trait upcasting workaround.
-///
-/// Currently, trait upcasting is not stable,
-/// but it is needed to properly use runtime reflection
-/// (convert `&dyn Component`/`&dyn Resource` to `&dyn Any`).
-/// Workaround is implemented in `AsAny` trait.
-///
-/// # Note
-/// Although `as_any_ref` method could belong to the [`Component`]/[`Resource`] trait itself,
-/// it would not fit ECS component meaning (even if it was hidden in docs)
-/// and also would require for users to manually implement it (even if it is trivial),
-/// so it is instead moved to the hidden trait.
-/// This approach also helps to maintain SemVer compatibility. When trait upcasting
-/// will be implemented, there will be no use for `as_any` method and it removing it
-/// would break compatibility (if `as_any` belonged to [`Component`]/[`Resource`] trait), but
-/// current implementation would allow to just delete `AsAny` trait completely
-/// without breaking compatibility.
-///
-pub(in crate::gamecore) mod as_any {
-    use std::any::Any;
-
-    /// [`AsAny`] trait is a workaround for trait upcasting.
-    ///
-    /// [`AsAny`] trait blanket implementation for all types that implement `Any`
-    /// allows for `&self` to coerce to `&dyn Any` (and similar coercions as well).
-    ///
-    pub trait AsAny {
-        /// Method that coerces `&self` to `&dyn Any`.
-        ///
-        fn as_any_ref(&self) -> &dyn Any;
-        /// Method that coerces `&mut self` to `&mut dyn Any`.
-        ///
-        fn as_any_mut(&mut self) -> &mut dyn Any;
-        /// Method that coerces `Box<dyn T>` to `Box<dyn Any>`.
-        ///
-        fn as_any_box(self: Box<Self>) -> Box<dyn Any>;
-    }
-    impl<T: Any> AsAny for T {
-        fn as_any_ref(&self) -> &dyn Any {
-            self
-        }
-        fn as_any_mut(&mut self) -> &mut dyn Any {
-            self
-        }
-        fn as_any_box(self: Box<Self>) -> Box<dyn Any> {
-            self
-        }
-    }
-}
-
 /// [`Component`] trait defines objects that are components by ECS terminology.
 ///
 /// In ECS, components define objects, almost like in Rust
@@ -76,13 +26,7 @@ pub(in crate::gamecore) mod as_any {
 /// [`Component`] trait requires `'static` trait bound, because `Any`
 /// is a supertrait of [`Component`] trait, and it requires `'static` trait bound.
 ///
-/// There is also `AsAny` supertrait which may seem a 'seal' trait
-/// that would forbid any external implementations - but it is not.
-/// `AsAny` trait has blanket implementation for every type that has `Any` implemented
-/// and so it is not a constraint at all.
-///
-/// That is why implementing [`Component`] trait is so easy:
-///
+/// Since most types implement `Any`, defining new [`Component`]s could be done like so:
 /// ```rust
 /// use ggengine::gamecore::components::Component;
 /// struct T;
@@ -93,7 +37,6 @@ pub(in crate::gamecore) mod as_any {
 /// Any Rust type that fits [`Component`]'s constraints can be a [`Component`].
 /// They are usually structs, but can also be enums or zero sized types.
 /// The following example shows how one might define components for RPG:
-///
 /// ```rust
 /// # use ggengine::gamecore::components::Component;
 /// struct Player;
@@ -126,7 +69,7 @@ pub(in crate::gamecore) mod as_any {
 /// impl Component for Weapon {}
 /// ```
 ///
-pub trait Component: Any + as_any::AsAny {}
+pub trait Component: Any {}
 impl fmt::Debug for dyn Component {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "dyn Component ({:?})", type_name::<Self>())
@@ -196,6 +139,19 @@ impl BundledComponent {
         (self.component_id, self.boxed_component)
     }
 }
+/// [`BundledIterator`] is a wrapper that provides trivial implementation of [`Bundle`]
+/// for anything that implements `IntoIterator<Item = BundledComponent>`.
+/// This struct does not provide any other functionality.
+///
+/// # Example
+/// ```rust
+/// # use ggengine::gamecore::components::{BundledIterator, Bundle};
+/// fn take_bundle(bundle: impl Bundle) {}
+///
+/// take_bundle(BundledIterator(vec![]));  // compiles
+/// ```
+///
+pub struct BundledIterator<T>(pub T);
 /// [`Bundle`] trait defines a set of [`Component`]s.
 ///
 /// In ECS, components define objects and systems operate on combinations of components.
@@ -216,12 +172,8 @@ impl BundledComponent {
 /// but those tuples can be nested, which practically removes that bound).
 /// This allows you to combine the necessary components into a [`Bundle`].
 ///
-/// [`Bundle`] specifically requires [`BoxedComponent`]s to be returned from `Bundle::components`,
-/// and that is because iterator of one [`Component`] type would be
-///
-/// for example defining a `PlayerBundle` containing components that describe the player
+/// For example defining a `PlayerBundle` containing components that describe the player
 /// can be written as follows:
-///
 /// ```rust
 /// # use ggengine::gamecore::components::Component;
 /// #[derive(Default)]
@@ -371,6 +323,11 @@ impl Bundle for BundledComponent {
         once(self)
     }
 }
+impl<T: IntoIterator<Item = BundledComponent>> Bundle for BundledIterator<T> {
+    fn bundled_components(self) -> impl IntoIterator<Item = BundledComponent> {
+        self.0
+    }
+}
 /// [`impl_bundle`] macro implements [`Bundle`] trait for tuples of arity 12 or less.
 ///
 macro_rules! impl_bundle {
@@ -422,13 +379,7 @@ impl_bundle!(
 /// [`Resource`] trait requires `'static` trait bound, because `Any`
 /// is a supertrait of [`Resource`] trait, and it requires `'static` trait bound.
 ///
-/// There is also `AsAny` supertrait which may seem a 'seal' trait
-/// that would forbid any external implementations - but it is not.
-/// `AsAny` trait has blanket implementation for every type that has `Any` implemented
-/// and so it is not a constraint at all.
-///
-/// That is why implementing [`Resource`] trait is so easy:
-///
+/// Since most types implement `Any`, defining new [`Resource`]s could be done like so:
 /// ```rust
 /// use ggengine::gamecore::components::Resource;
 /// struct T;
@@ -439,7 +390,7 @@ impl_bundle!(
 /// that goes for [`Component`]s is also true for [`Resource`]s.
 /// To further understand relations between those traits, it is encouraged to read docs for submodule items.
 ///
-pub trait Resource: Any + as_any::AsAny {}
+pub trait Resource: Any {}
 impl fmt::Debug for dyn Resource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "dyn Resource ({:?})", type_name::<Self>())
@@ -465,5 +416,63 @@ impl ResourceId {
     ///
     pub(super) fn of<R: Resource>() -> Self {
         ResourceId(TypeId::of::<R>())
+    }
+}
+
+/// [`Downcastable`] trait allows [`Component`]s and [`Resource`]s
+/// to be downcasted to concrete types from behind `dyn` + indirection.
+///
+/// Ideally this functionality would be implemented with a bunch of independent functions,
+/// but that is impossible to do generically
+/// since `Box<T>` where `T: ?Sized` is not `Sized` itself, and thus cannot be casted to `Any`.
+///
+/// Concrete implementations of this trait on `dyn Component` and `dyn Resource`
+/// (which is all that is needed anyway) allow doing that conversion.
+///
+/// # Note
+/// `downcast_to_value` consumes initial `Box`,
+/// but on failure it does not need to, and so it returns it in upcasted form (`Box<dyn Any>`).
+/// Although it would be preferrable to return initial type, it is impossible to do so from trait.
+///
+/// `ggengine` always uses this function in a context where conversion cannot fail and
+/// that makes this issue practically non-existent.
+///
+pub(super) trait DowncastableBox {
+    /// Method that coerces `Box<impl AsAny>` to `T`.
+    ///
+    fn downcast_to_value<T: Any>(self: Box<Self>) -> Result<T, Box<dyn Any>>;
+    /// Method that coerces `&Box<impl AsAny>` to `&T`.
+    ///
+    fn downcast_to_ref<T: Any>(self: &Box<Self>) -> Option<&T>;
+    /// Method that coerces `&mut Box<impl AsAny>` to `&mut T`.
+    ///
+    fn downcast_to_mut<T: Any>(self: &mut Box<Self>) -> Option<&mut T>;
+}
+impl DowncastableBox for dyn Component {
+    fn downcast_to_value<T: Any>(self: Box<Self>) -> Result<T, Box<dyn Any>> {
+        let as_any: Box<dyn Any> = self;
+        as_any.downcast::<T>().map(|boxed| *boxed)
+    }
+    fn downcast_to_ref<T: Any>(self: &Box<Self>) -> Option<&T> {
+        let as_any: &dyn Any = &**self;
+        as_any.downcast_ref::<T>()
+    }
+    fn downcast_to_mut<T: Any>(self: &mut Box<Self>) -> Option<&mut T> {
+        let as_any: &mut dyn Any = &mut **self;
+        as_any.downcast_mut::<T>()
+    }
+}
+impl DowncastableBox for dyn Resource {
+    fn downcast_to_value<T: Any>(self: Box<Self>) -> Result<T, Box<dyn Any>> {
+        let as_any: Box<dyn Any> = self;
+        as_any.downcast::<T>().map(|boxed| *boxed)
+    }
+    fn downcast_to_ref<T: Any>(self: &Box<Self>) -> Option<&T> {
+        let as_any: &dyn Any = &**self;
+        as_any.downcast_ref::<T>()
+    }
+    fn downcast_to_mut<T: Any>(self: &mut Box<Self>) -> Option<&mut T> {
+        let as_any: &mut dyn Any = &mut **self;
+        as_any.downcast_mut::<T>()
     }
 }

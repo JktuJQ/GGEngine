@@ -2,11 +2,10 @@
 //! are used to store ECS-related data for game engine.
 //!
 
-use crate::gamecore::components::as_any::AsAny;
 use crate::gamecore::{
     components::{
-        BoxedComponent, BoxedResource, Bundle, BundledComponent, Component, ComponentId, Resource,
-        ResourceId,
+        BoxedComponent, BoxedResource, Bundle, BundledComponent, Component, ComponentId,
+        DowncastableBox, Resource, ResourceId,
     },
     entities::{EntityId, EntityMut},
 };
@@ -149,7 +148,7 @@ impl EntityComponentStorage {
         self.inserted_entities.insert(entity_id);
 
         for bundled_component in bundle.bundled_components() {
-            self.insert_bundled_component_with_capacity(
+            let _ = self.insert_bundled_component_with_capacity(
                 entity_id,
                 bundled_component,
                 entities_count_capacity,
@@ -257,10 +256,9 @@ impl EntityComponentStorage {
             0,
         )
         .map(|boxed_component| {
-            *(boxed_component
-                .as_any_box()
-                .downcast::<C>()
-                .expect("This type corresponds to this value."))
+            boxed_component
+                .downcast_to_value::<C>()
+                .expect("This type corresponds to this value.")
         })
     }
     /// Inserts bundle of components to given entity.
@@ -278,10 +276,9 @@ impl EntityComponentStorage {
             .get_mut(entity_id.id() as usize)?
             .take()
             .map(|boxed_component| {
-                *(boxed_component
-                    .as_any_box()
-                    .downcast::<C>()
-                    .expect("This type corresponds to this value."))
+                boxed_component
+                    .downcast_to_value::<C>()
+                    .expect("This type corresponds to this value.")
             })
     }
     /// Returns immutable reference to the component of given entity if present.
@@ -290,13 +287,8 @@ impl EntityComponentStorage {
         self.table
             .get(&ComponentId::of::<C>())?
             .get(entity_id.id() as usize)?
-            .as_ref()
-            .map(|boxed_component| {
-                (**boxed_component)
-                    .as_any_ref()
-                    .downcast_ref::<C>()
-                    .expect("This type corresponds to this value.")
-            })
+            .as_ref()?
+            .downcast_to_ref::<C>()
     }
     /// Returns mutable reference to the component of given entity if present.
     ///
@@ -307,13 +299,8 @@ impl EntityComponentStorage {
         self.table
             .get_mut(&ComponentId::of::<C>())?
             .get_mut(entity_id.id() as usize)?
-            .as_mut()
-            .map(|boxed_component| {
-                (**boxed_component)
-                    .as_any_mut()
-                    .downcast_mut::<C>()
-                    .expect("This type corresponds to this value.")
-            })
+            .as_mut()?
+            .downcast_to_mut::<C>()
     }
 }
 
@@ -350,24 +337,22 @@ impl ResourceStorage {
         self.resources
             .insert(ResourceId::of::<R>(), Box::new(value))
             .map(|boxed_resource| {
-                *(boxed_resource
-                    .as_any_box()
-                    .downcast::<R>()
-                    .expect("This type corresponds to this value."))
+                boxed_resource
+                    .downcast_to_value::<R>()
+                    .expect("This type corresponds to this value.")
             })
     }
 
-    /// Removes the resource of a given type and returns it, if it exists.
+    /// Removes the resource of a given type and returns it if present.
     /// Otherwise, returns `None`.
     ///
     pub(super) fn remove_resource<R: Resource>(&mut self) -> Option<R> {
         self.resources
             .remove(&ResourceId::of::<R>())
             .map(|boxed_resource| {
-                *(boxed_resource
-                    .as_any_box()
-                    .downcast::<R>()
-                    .expect("This type corresponds to this value."))
+                boxed_resource
+                    .downcast_to_value::<R>()
+                    .expect("This type corresponds to this value.")
             })
     }
 
@@ -377,22 +362,18 @@ impl ResourceStorage {
         self.resources.contains_key(&ResourceId::of::<R>())
     }
 
-    /// Gets a reference to the resource of the given type if it exists.
+    /// Gets a reference to the resource of the given type if present.
     ///
     pub(super) fn get_resource<R: Resource>(&self) -> Option<&R> {
-        (**(self.resources.get(&ResourceId::of::<R>())?))
-            .as_any_ref()
-            .downcast_ref::<R>()
+        self.resources.get(&ResourceId::of::<R>())?.downcast_to_ref::<R>()
     }
-    /// Gets a mutable reference to the resource of the given type if it exists.
+    /// Gets a mutable reference to the resource of the given type if present.
     ///
     pub(super) fn get_resource_mut<R: Resource>(&mut self) -> Option<&mut R> {
-        (**(self.resources.get_mut(&ResourceId::of::<R>())?))
-            .as_any_mut()
-            .downcast_mut::<R>()
+        self.resources.get_mut(&ResourceId::of::<R>())?.downcast_to_mut::<R>()
     }
 
-    /// Gets a mutable reference to the resource of given type if it exists,
+    /// Gets a mutable reference to the resource of given type if present,
     /// otherwise inserts the resource that is constructed by given closure and
     /// returns mutable reference to it.
     ///
@@ -400,13 +381,12 @@ impl ResourceStorage {
         &mut self,
         f: impl FnOnce() -> R,
     ) -> &mut R {
-        (**(self
+        self
             .resources
             .entry(ResourceId::of::<R>())
-            .or_insert_with(|| Box::new(f()))))
-        .as_any_mut()
-        .downcast_mut::<R>()
-        .expect("This type corresponds to this value.")
+            .or_insert_with(|| Box::new(f()))
+            .downcast_to_mut::<R>()
+            .expect("This type corresponds to this value.")
     }
 
     /// Clears storage, removing all data. Keeps the allocated memory.
