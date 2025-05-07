@@ -2,27 +2,22 @@
 //! that are used to detect and resolve collisions between two shapes.
 //!
 
-use crate::mathcore::vectors::Vertex;
 use crate::mathcore::{
     shapes::{Convex, Segment, Shape},
-    vectors::{Point, Vector2},
+    vectors::{Point, Vector2, Vertex},
     Sign,
 };
 
 /// `CollisionSystem` trait defines systems that can detect collisions between two shapes and
 /// resolve collisions between them.
 ///
-pub trait CollisionSystem<S1, S2>
-where
-    S1: Shape,
-    S2: Shape,
-{
+pub trait CollisionSystem<S1: Shape, S2: Shape> {
     /// Returns whether two shapes collide or not.
     ///
-    fn is_colliding(&self, shape1: &S1, shape2: &S2) -> bool;
+    fn is_colliding(&mut self, shape1: &S1, shape2: &S2) -> bool;
     /// Statically resolves collision between two shapes.
     ///
-    fn resolve(&self, shape1: &mut S1, shape2: &S2);
+    fn resolve(&mut self, shape1: &mut S1, shape2: &S2);
 }
 
 /// `SATSystem` is a collision system that can detect and resolve collisions between two convex shapes
@@ -48,12 +43,8 @@ impl SATSystem {
         (min, max)
     }
 }
-impl<S1, S2> CollisionSystem<S1, S2> for SATSystem
-where
-    S1: Convex,
-    S2: Convex,
-{
-    fn is_colliding(&self, shape1: &S1, shape2: &S2) -> bool {
+impl<S1: Convex, S2: Convex> CollisionSystem<S1, S2> for SATSystem {
+    fn is_colliding(&mut self, shape1: &S1, shape2: &S2) -> bool {
         let (mut s1, mut s2): (&dyn Convex, &dyn Convex) = (shape1, shape2);
 
         for shape in 0..2 {
@@ -62,9 +53,11 @@ where
             }
 
             for edge in s1.edges() {
-                let [a, b] = edge.points;
-                let axis_projection: Vector2 =
-                    Vector2::from([-(b.y - a.y), b.x - a.x]).normalized();
+                let axis_projection: Vector2 = Vector2 {
+                    x: -(edge.point2.y - edge.point1.y),
+                    y: edge.point2.x - edge.point1.x,
+                }
+                .normalized();
 
                 let (min1, max1): (f32, f32) =
                     SATSystem::axis_projection_boundaries(axis_projection, s1.vertices());
@@ -78,7 +71,7 @@ where
         }
         true
     }
-    fn resolve(&self, shape1: &mut S1, shape2: &S2) {
+    fn resolve(&mut self, shape1: &mut S1, shape2: &S2) {
         let (mut s1, mut s2): (&dyn Convex, &dyn Convex) = (shape1, shape2);
 
         let mut overlap: f32 = f32::INFINITY;
@@ -89,9 +82,11 @@ where
             }
 
             for edge in s1.edges() {
-                let [a, b] = edge.points;
-                let axis_projection: Vector2 =
-                    Vector2::from([-(b.y - a.y), b.x - a.x]).normalized();
+                let axis_projection: Vector2 = Vector2 {
+                    x: -(edge.point2.y - edge.point1.y),
+                    y: edge.point2.x - edge.point1.x,
+                }
+                .normalized();
 
                 let (min1, max1): (f32, f32) =
                     SATSystem::axis_projection_boundaries(axis_projection, s1.vertices());
@@ -126,12 +121,8 @@ where
 ///
 #[derive(Copy, Clone, Debug)]
 pub struct DiagonalsSystem;
-impl<S1, S2> CollisionSystem<S1, S2> for DiagonalsSystem
-where
-    S1: Convex,
-    S2: Convex,
-{
-    fn is_colliding(&self, shape1: &S1, shape2: &S2) -> bool {
+impl<S1: Convex, S2: Convex> CollisionSystem<S1, S2> for DiagonalsSystem {
+    fn is_colliding(&mut self, shape1: &S1, shape2: &S2) -> bool {
         let (mut s1, mut s2): (&dyn Convex, &dyn Convex) = (shape1, shape2);
 
         for shape in 0..2 {
@@ -141,7 +132,10 @@ where
 
             let center: Point = s1.origin();
             for vertex in s1.vertices() {
-                let half_diagonal: Segment = Segment::from([center, *vertex]);
+                let half_diagonal: Segment = Segment {
+                    point1: center,
+                    point2: *vertex,
+                };
                 for edge in s2.edges() {
                     if half_diagonal.intersection(edge).is_some() {
                         return true;
@@ -151,7 +145,7 @@ where
         }
         false
     }
-    fn resolve(&self, shape1: &mut S1, shape2: &S2) {
+    fn resolve(&mut self, shape1: &mut S1, shape2: &S2) {
         let (mut s1, mut s2): (&dyn Convex, &dyn Convex) = (shape1, shape2);
         let (mut center1, center2): (Point, Point) = (shape1.origin(), shape2.origin());
         let mut sign: Sign = Sign::Negative;
@@ -163,15 +157,17 @@ where
             }
 
             for vertex in s1.vertices() {
-                let half_diagonal: Segment =
-                    Segment::from([if shape == 0 { center1 } else { center2 }, *vertex]);
+                let half_diagonal: Segment = Segment {
+                    point1: if shape == 0 { center1 } else { center2 },
+                    point2: *vertex,
+                };
 
                 let mut displacement: Vector2 = Vector2::zero();
 
                 for edge in s2.edges() {
                     if let Some(intersection_point) = half_diagonal.intersection(edge) {
-                        displacement += half_diagonal.slope()
-                            - (intersection_point - (if shape == 0 { center1 } else { center2 }));
+                        displacement +=
+                            half_diagonal.slope() - (intersection_point - half_diagonal.point1);
                     }
                 }
                 center1 += displacement * (sign as i8 as f32);
@@ -180,68 +176,6 @@ where
 
         shape1.translate_to(center1);
     }
-}
-
-/// Returns whether two shapes are colliding or not.
-///
-/// Detection is performed by using provided collision system.
-///
-/// # Example
-/// ```rust
-/// # use ggengine::mathcore::collisions::{CollisionSystem, SATSystem, DiagonalsSystem, is_colliding};
-/// # use ggengine::mathcore::{shapes::Rect, vectors::Point, {Angle, Size}};
-/// let rect1: Rect = Rect::from_origin(
-///     Point::from([0.0, 0.0]),
-///     Angle::default(),
-///     Size::from_value(2.0),
-///     Size::from_value(2.0),
-/// );
-/// let rect2: Rect = Rect::from_origin(
-///     Point::from([1.0, 0.0]),
-///     Angle::default(),
-///     Size::from_value(2.0),
-///     Size::from_value(2.0),
-/// );
-/// assert!(is_colliding(&SATSystem, &rect1, &rect2));
-/// assert!(is_colliding(&DiagonalsSystem, &rect1, &rect2));
-/// ```
-///
-pub fn is_colliding<S1: Shape, S2: Shape>(
-    collision_system: &(impl CollisionSystem<S1, S2> + ?Sized),
-    shape1: &S1,
-    shape2: &S2,
-) -> bool {
-    collision_system.is_colliding(shape1, shape2)
-}
-/// Statically resolves collision between two shapes.
-///
-/// Resolving is performed by using provided collision system.
-///
-/// # Example
-/// ```rust
-/// # use ggengine::mathcore::collisions::{CollisionSystem, SATSystem, DiagonalsSystem, resolve_collision};
-/// # use ggengine::mathcore::{shapes::{PolygonLike, Rect}, vectors::{Vertex, Point}, {Angle, Size}};
-/// let mut rect1: Rect = Rect::from_origin(
-///     Point::from([0.0, 0.0]),
-///     Angle::default(),
-///     Size::from_value(2.0),
-///     Size::from_value(2.0),
-/// );
-/// let rect2: Rect = Rect::from_origin(
-///     Point::from([1.0, 0.0]),
-///     Angle::default(),
-///     Size::from_value(2.0),
-///     Size::from_value(2.0),
-/// );
-/// resolve_collision(&SATSystem, &mut rect1, &rect2); // or `resolve(&DiagonalsSystem, &mut rect1, &rect2);`
-/// ```
-///
-pub fn resolve_collision<S1: Shape, S2: Shape>(
-    collision_system: &(impl CollisionSystem<S1, S2> + ?Sized),
-    shape1: &mut S1,
-    shape2: &S2,
-) {
-    collision_system.resolve(shape1, shape2);
 }
 
 #[cfg(test)]
@@ -258,26 +192,26 @@ mod tests {
         use super::SATSystem;
 
         let mut rect1: Rect = Rect::from_origin(
-            Point::from([0.0, 0.0]),
+            Point { x: 0.0, y: 0.0 },
             Angle::default(),
-            Size::from_value(2.0),
-            Size::from_value(2.0),
+            Size::try_from(2.0).expect("Value is in correct range."),
+            Size::try_from(2.0).expect("Value is in correct range."),
         );
         let rect2: Rect = Rect::from_origin(
-            Point::from([1.0, 0.0]),
+            Point { x: 1.0, y: 0.0 },
             Angle::default(),
-            Size::from_value(2.0),
-            Size::from_value(2.0),
+            Size::try_from(2.0).expect("Value is in correct range."),
+            Size::try_from(2.0).expect("Value is in correct range."),
         );
         assert!(SATSystem.is_colliding(&rect1, &rect2));
         SATSystem.resolve(&mut rect1, &rect2);
         assert_eq!(
             rect1.vertices(),
             [
-                Vertex::from([-2.0, 1.0]),
-                Vertex::from([0.0, 1.0]),
-                Vertex::from([0.0, -1.0]),
-                Vertex::from([-2.0, -1.0])
+                Vertex { x: -2.0, y: 1.0 },
+                Vertex { x: 0.0, y: 1.0 },
+                Vertex { x: 0.0, y: -1.0 },
+                Vertex { x: -2.0, y: -1.0 }
             ],
         )
     }
@@ -287,53 +221,27 @@ mod tests {
         use super::DiagonalsSystem;
 
         let mut rect1: Rect = Rect::from_origin(
-            Point::from([0.0, 0.0]),
+            Point { x: 0.0, y: 0.0 },
             Angle::default(),
-            Size::from_value(2.0),
-            Size::from_value(2.0),
+            Size::try_from(2.0).expect("Value is in correct range."),
+            Size::try_from(1.0).expect("Value is in correct range."),
         );
         let rect2: Rect = Rect::from_origin(
-            Point::from([1.0, 0.0]),
+            Point { x: 1.0, y: 0.0 },
             Angle::default(),
-            Size::from_value(2.0),
-            Size::from_value(2.0),
+            Size::try_from(2.0).expect("Value is in correct range."),
+            Size::try_from(2.0).expect("Value is in correct range."),
         );
         assert!(DiagonalsSystem.is_colliding(&rect1, &rect2));
         DiagonalsSystem.resolve(&mut rect1, &rect2);
         assert_eq!(
             rect1.vertices(),
             [
-                Vertex::from([-1.0, 1.0]),
-                Vertex::from([1.0, 1.0]),
-                Vertex::from([1.0, -1.0]),
-                Vertex::from([-1.0, -1.0])
+                Vertex { x: -2.0, y: 0.5 },
+                Vertex { x: 0.0, y: 0.5 },
+                Vertex { x: 0.0, y: -0.5 },
+                Vertex { x: -2.0, y: -0.5 }
             ],
         )
-    }
-
-    #[test]
-    fn helper_fns() {
-        use super::{is_colliding, CollisionSystem, DiagonalsSystem, SATSystem};
-
-        let mut collision_system: &dyn CollisionSystem<Rect, Rect>;
-
-        let rect1: Rect = Rect::from_origin(
-            Point::from([0.0, 0.0]),
-            Angle::default(),
-            Size::from_value(2.0),
-            Size::from_value(2.0),
-        );
-        let rect2: Rect = Rect::from_origin(
-            Point::from([1.0, 0.0]),
-            Angle::default(),
-            Size::from_value(2.0),
-            Size::from_value(2.0),
-        );
-
-        collision_system = &SATSystem;
-        assert!(is_colliding(collision_system, &rect1, &rect2));
-
-        collision_system = &DiagonalsSystem;
-        assert!(is_colliding(collision_system, &rect1, &rect2));
     }
 }

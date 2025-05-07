@@ -81,23 +81,25 @@ use std::{fmt, path::PathBuf};
 ///         image_canvas.set_draw_color(Color::RED);
 ///         assert_eq!(image_canvas.get_draw_color(), Color::RED);
 ///
-///         image_canvas.draw_point(Point::from([0.0, 0.0]));
+///         image_canvas.draw_point(Point { x: 0.0, y: 0.0 });
 ///         image_canvas.draw_segment(
-///             Segment::from([
-///                 Point::from([10.0, 10.0]), Point::from([50.0, 50.0])
-///             ])
+///             Segment {
+///                 point1: Point { x: 10.0, y: 10.0 },
+///                 point2: Point { x: 50.0, y: 50.0 }
+///             }
 ///         );
 ///         image_canvas.draw_rect(
 ///             Rect::from_origin(
-///                 Point::from([100.0, 100.0]),
+///                 Point { x: 100.0, y: 100.0 },
 ///                 Angle::DEG45,
-///                 Size::from_value(30.0), Size::from_value(30.0),
+///                 Size::try_from(30.0).expect("Value is in correct range."),
+///                 Size::try_from(30.0).expect("Value is in correct range."),
 ///             )
 ///         );
 ///         image_canvas.draw_polygon(&[
-///             Point::from([200.0, 200.0]),
-///             Point::from([300.0, 300.0]),
-///             Point::from([400.0, 100.0]),
+///             Point { x: 200.0, y: 200.0 },
+///             Point { x: 300.0, y: 300.0 },
+///             Point { x: 400.0, y: 100.0 },
 ///         ]);
 ///
 ///         image_canvas.clear();
@@ -105,9 +107,10 @@ use std::{fmt, path::PathBuf};
 ///         let texture_creator: TextureCreator = image_canvas.texture_creator();
 ///         image_canvas.blit_from_texture(
 ///             Some(Rect::from_origin(
-///                 Point::from([600.0, 600.0]),
+///                 Point { x: 600.0, y: 600.0 },
 ///                 Angle::DEG60,
-///                 Size::from_value(100.0), Size::from_value(100.0),
+///                 Size::try_from(100.0).expect("Value is in correct range."),
+///                 Size::try_from(100.0).expect("Value is in correct range."),
 ///             )),
 ///             &texture_creator.create_texture_from_file("texture.png")
 ///                 .expect("Filename should be correct"),
@@ -147,7 +150,10 @@ pub trait Canvas<'a>: Blendable {
         let vertices: &[Point] = rect.vertices();
         let length: usize = vertices.len();
         for i in 1..=length {
-            self.draw_segment(Segment::from([vertices[i - 1], vertices[i % length]]));
+            self.draw_segment(Segment {
+                point1: vertices[i - 1],
+                point2: vertices[i % length],
+            });
         }
     }
     /// Draws polygon on the canvas.
@@ -157,7 +163,10 @@ pub trait Canvas<'a>: Blendable {
     fn draw_polygon(&mut self, polygon: &[Point]) {
         let length: usize = polygon.len();
         for i in 1..=length {
-            self.draw_segment(Segment::from([polygon[i - 1], polygon[i % length]]));
+            self.draw_segment(Segment {
+                point1: polygon[i - 1],
+                point2: polygon[i % length],
+            });
         }
     }
 
@@ -220,8 +229,8 @@ macro_rules! impl_canvas {
             fn draw_segment(&mut self, segment: Segment) {
                 self.canvas
                     .draw_fline(
-                        (segment.points[0].x, segment.points[0].y),
-                        (segment.points[1].x, segment.points[1].y),
+                        (segment.point1.x, segment.point1.y),
+                        (segment.point2.x, segment.point2.y),
                     )
                     .expect("`ggengine` renderer should be able to draw a point");
             }
@@ -540,18 +549,20 @@ impl WindowCanvas {
     ///
     /// canvas.blit_from_texture(
     ///     Some(Rect::from_origin(
-    ///         Point::from([100.0, 100.0]),
+    ///         Point { x: 100.0, y: 100.0 },
     ///         Angle::ZERO,
-    ///         Size::from_value(100.0), Size::from_value(100.0)
+    ///         Size::try_from(100.0).expect("Value is in correct range."),
+    ///         Size::try_from(100.0).expect("Value is in correct range.")
     ///     )),
     ///     &texture1,
     ///     None
     /// );
     /// canvas.blit_from_texture(
     ///     Some(Rect::from_origin(
-    ///         Point::from([400.0, 400.0]),
+    ///         Point { x: 400.0, y: 400.0 },
     ///         Angle::ZERO,
-    ///         Size::from_value(100.0), Size::from_value(100.0)
+    ///         Size::try_from(100.0).expect("Value is in correct range."),
+    ///         Size::try_from(100.0).expect("Value is in correct range.")
     ///     )),
     ///     &texture2,
     ///     None

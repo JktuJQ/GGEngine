@@ -4,49 +4,11 @@
 //!
 
 use crate::mathcore::{
-    matrices::{Matrix, Matrix3x3},
+    matrices::Matrix3x3,
     vectors::{Point, Vector2},
     {Angle, Size},
 };
 use serde::{Deserialize, Serialize};
-
-/// Combines given transform matrices by using dot product.
-///
-/// This function automatically reverses the order, so if you need to combine transforms `A -> B -> C`
-/// just pass `vec![A, B, C]` (matrices multiplication will be performed in order `C * B * A`).
-///
-/// # Example
-/// ```rust
-/// # use ggengine::mathcore::{transforms::combine_matrices, matrices::Matrix3x3};
-/// let matrix1: Matrix3x3 = Matrix3x3::from([ // rotation
-///     [0.5, -0.87, 0.0],
-///     [0.87, 0.5, 0.0],
-///     [0.0, 0.0, 1.0],
-/// ]);
-/// let matrix2: Matrix3x3 = Matrix3x3::from([ // translation
-///     [1.0, 0.0, 3.0],
-///     [0.0, 1.0, 2.0],
-///     [0.0, 0.0, 1.0],
-/// ]);
-/// let matrix3: Matrix3x3 = Matrix3x3::from([ // scaling
-///     [2.0, 0.0, 0.0],
-///     [0.0, 1.0, 0.0],
-///     [0.0, 0.0, 1.0],
-/// ]);
-/// assert_eq!(combine_matrices(vec![matrix1, matrix2, matrix3]).as_array(),
-/// [
-///     [1.0, -1.74, 6.0],
-///     [0.87, 0.5, 2.0],
-///     [0.0, 0.0, 1.0]
-/// ]);  // translation -> rotation -> scaling
-/// ```
-///
-pub fn combine_matrices<const N: usize>(matrices: Vec<Matrix<N, N>>) -> Matrix<N, N> {
-    matrices
-        .iter()
-        .rev()
-        .fold(Matrix::<N, N>::identity(), |acc, elem| acc * *elem)
-}
 
 /// [`Transform`] struct-like enum represents 3 basic matrix transformations.
 ///
@@ -86,16 +48,16 @@ impl Transform {
     /// # use ggengine::mathcore::transforms::Transform;
     /// # use ggengine::mathcore::matrices::{Matrix3x1, Matrix3x3};
     /// # use ggengine::mathcore::vectors::Vector2;
-    /// let transform: Transform = Transform::Translation { vector: Vector2::from([2.0, 3.0]) };
+    /// let transform: Transform = Transform::Translation { vector: Vector2 { x: 2.0, y: 3.0 } };
     /// let matrix: Matrix3x3 = transform.matrix();
     /// assert_eq!(matrix.as_array(),
     ///     [[1.0, 0.0, 2.0],
     ///      [0.0, 1.0, 3.0],
     ///      [0.0, 0.0, 1.0]]
     /// );
-    /// let point: Vector2 = Vector2::from([0.0, 2.0]);
+    /// let point: Vector2 = Vector2 { x: 0.0, y: 2.0 };
     /// let transformed: Vector2 = matrix.apply_to(point);
-    /// assert_eq!(transformed, Vector2::from([2.0, 5.0]));  // x' = x1 + x2
+    /// assert_eq!(transformed, Vector2 { x: 2.0, y: 5.0 });  // x' = x1 + x2
     ///                                                      // y' = y1 + y2
     /// ```
     ///
@@ -113,9 +75,9 @@ impl Transform {
     ///      [1.0, 0.0, 0.0],
     ///      [0.0, 0.0, 1.0]]
     /// );
-    /// let point: Vector2 = Vector2::from([0.0, 2.0]);
+    /// let point: Vector2 = Vector2 { x: 0.0, y: 2.0 };
     /// let transformed: Vector2 = matrix.apply_to(point);
-    /// assert_eq!(transformed, Vector2::from([-2.0, 0.0]));  // x' = x * cos(angle) - y * sin(angle)
+    /// assert_eq!(transformed, Vector2 { x: -2.0, y: 0.0 });  // x' = x * cos(angle) - y * sin(angle)
     ///                                                       // y' = x * sin(angle) + y * cos(angle)
     /// ```
     ///
@@ -126,16 +88,21 @@ impl Transform {
     /// # use ggengine::mathcore::vectors::Vector2;
     /// # use ggengine::mathcore::floats::FloatOperations;
     /// # use ggengine::mathcore::Size;
-    /// let transform: Transform = Transform::Scaling { size_scale: (Size::from_value(3.0), Size::from_value(2.0)) };
+    /// let transform: Transform = Transform::Scaling {
+    ///     size_scale: (
+    ///         Size::try_from(3.0).expect("Value is in correct range."),
+    ///         Size::try_from(2.0).expect("Value is in correct range.")
+    ///     )
+    /// };
     /// let matrix: Matrix3x3 = transform.matrix();
     /// assert_eq!(matrix.as_array(),
     ///     [[3.0, 0.0, 0.0],
     ///      [0.0, 2.0, 0.0],
     ///      [0.0, 0.0, 1.0]]
     /// );
-    /// let point: Vector2 = Vector2::from([2.0, 2.0]);
+    /// let point: Vector2 = Vector2 { x: 2.0, y: 2.0 };
     /// let transformed: Vector2 = matrix.apply_to(point);
-    /// assert_eq!(transformed, Vector2::from([6.0, 4.0]));  // x' = x * width_scale
+    /// assert_eq!(transformed, Vector2 { x: 6.0, y: 4.0 });  // x' = x * width_scale
     ///                                                      // y' = y * height_scale
     /// ```
     ///
@@ -159,6 +126,35 @@ impl Transform {
             }
         };
         matrix
+    }
+
+    /// Combines given transforms by using dot product.
+    ///
+    /// This function automatically reverses the order, so if you need to combine transforms `A -> B -> C`
+    /// just pass them in that order (matrices multiplication will be performed in order `C * B * A`).
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::mathcore::{Angle, Size, floats::FloatOperations, vectors::Vector2, transforms::Transform, matrices::Matrix3x3};
+    /// let rotation: Transform = Transform::Rotation { angle: Angle::DEG90 };
+    /// let translation: Transform = Transform::Translation { vector: Vector2 { x: 3.0, y: 2.0 } };
+    ///
+    /// let size_scale: Size = Size::try_from(2.0).expect("Value is in correct range.");
+    /// let scale: Transform = Transform::Scaling { size_scale: (size_scale, size_scale) };
+    /// assert_eq!(Transform::combine([rotation, translation, scale].into_iter()).correct_to(0).as_array(),
+    /// [
+    ///     [-0.0, -2.0, 6.0],
+    ///     [2.0, -0.0, 4.0],
+    ///     [0.0, 0.0, 1.0]
+    /// ]);  // rotation -> translation -> scaling
+    /// ```
+    ///
+    pub fn combine(transforms: impl Iterator<Item = Transform> + DoubleEndedIterator) -> Matrix3x3 {
+        transforms
+            .rev()
+            .fold(Matrix3x3::identity(), |acc, transform| {
+                acc * transform.matrix()
+            })
     }
 }
 
@@ -219,5 +215,7 @@ pub trait Scalable {
 /// [`Transformable`] super-trait defines properties of transformable object.
 ///
 /// This trait requires [`Translatable`], [`Rotatable`] and [`Scalable`] traits to be implemented.
+/// This trait is automatically implemented if possible.
 ///
 pub trait Transformable: Translatable + Rotatable + Scalable {}
+impl<T: Translatable + Rotatable + Scalable> Transformable for T {}

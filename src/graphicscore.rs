@@ -3,8 +3,8 @@
 //!
 
 // submodules and public re-exports
-mod ext;
-pub use ext::*;
+mod primitives;
+pub use primitives::*;
 
 pub mod drawing;
 pub mod textures;

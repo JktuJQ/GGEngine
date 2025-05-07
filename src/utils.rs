@@ -363,7 +363,7 @@ impl Window {
     ///
     pub fn position(&self) -> Vector2Int {
         let (x, y): (i32, i32) = self.window.position();
-        Vector2Int::from([x, y])
+        Vector2Int { x, y }
     }
 
     /// Sets new size for the window.

@@ -1,4 +1,4 @@
-//! `graphicscore::ext` hidden submodule supplies helper newtypes, enums, structs etc. that are
+//! `graphicscore::primitives` hidden submodule supplies helper newtypes, enums, structs etc. that are
 //! used throughout `ggengine` crate.
 //!
 

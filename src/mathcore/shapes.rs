@@ -2,9 +2,9 @@
 //!
 
 use crate::mathcore::{
-    floats::{equal, FloatOperations},
+    floats::{almost_equal, FloatOperations},
     matrices::Matrix3x3,
-    transforms::{combine_matrices, Rotatable, Scalable, Transform, Transformable, Translatable},
+    transforms::{Rotatable, Scalable, Transform, Transformable, Translatable},
     vectors::{Point, Vector2, Vertex},
     {Angle, Sign, Size},
 };
@@ -12,19 +12,22 @@ use serde::{Deserialize, Serialize};
 
 /// [`Segment`] struct represents two-dimensional line segment.
 ///
-/// This struct is not an implementor of `Shape` traits because most of associated functions make
-/// no sense for line segment (e.g. `perimeter` and `area` from `Shape`, `scale` and `set_size` from `Scalable`).
-/// Transform traits that are implemented (`Translatable` and `Rotatable`) supply comments on
+/// This struct is not an implementor of [`Shape`] traits because most of associated functions make
+/// no sense for line segment (e.g. `perimeter` and `area` from [`Shape`], `scale` and `set_size` from [`Scalable`]).
+/// Transform traits that are implemented ([`Translatable`] and [`Rotatable`]) supply comments on
 /// what is considered origin and angle of a line segment.
+///
+/// `Segment.point1` is considered as base, so that the slope is defined as
+/// `self.point2 - self.point1`.
 ///
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Segment {
-    /// Array of segment's points.
+    /// First point of segment.
     ///
-    /// First one (`points[0]`) is considered as base, so that the slope is defined as
-    /// `points[1] - points[0]`.
+    pub point1: Point,
+    /// Second point of segment.
     ///
-    pub points: [Point; 2],
+    pub point2: Point,
 }
 impl Segment {
     /// Returns length of a segment.
@@ -36,7 +39,7 @@ impl Segment {
     /// Returns slope of a segment.
     ///
     pub fn slope(&self) -> Vector2 {
-        self.points[1] - self.points[0]
+        self.point2 - self.point1
     }
     /// Returns `k` coefficient of a line that contains this segment.
     ///
@@ -45,10 +48,10 @@ impl Segment {
     /// For vertical lines `k` equals `+inf`/`-inf` depending on direction of a segment.
     ///
     pub fn k(&self) -> f32 {
-        let slope: Vector2 = self.slope().correct(0);
-        if equal(slope.y, 0.0) {
+        let slope: Vector2 = self.slope().correct_to(0);
+        if almost_equal(slope.y, 0.0) {
             0.0
-        } else if equal(slope.x, 0.0) {
+        } else if almost_equal(slope.x, 0.0) {
             if slope.y > 0.0 {
                 f32::INFINITY
             } else {
@@ -63,7 +66,7 @@ impl Segment {
     /// `b` stands for height or y-intercept -> `y = kx + b`, `b = y - kx`.
     ///
     pub fn b(&self) -> f32 {
-        self.points[1].y - self.k() * self.points[1].x
+        self.point2.y - self.k() * self.point2.x
     }
 
     /// Returns point at which two segments intersect.
@@ -71,20 +74,20 @@ impl Segment {
     ///
     pub fn intersection(self, other: Segment) -> Option<Point> {
         let (s1, s2): (Vector2, Vector2) = (self.slope(), other.slope());
-        let tails: Vector2 = self.points[0] - other.points[0];
+        let tails: Vector2 = self.point1 - other.point1;
 
-        let d: f32 = s1 ^ s2;
-        if equal(d, 0.0) {
-            if self.points[0] == other.points[0] || self.points[0] == other.points[1] {
-                return Some(self.points[0]);
-            } else if self.points[1] == other.points[0] || self.points[1] == other.points[1] {
-                return Some(self.points[1]);
+        let d: f32 = s1.cross_product(s2);
+        if almost_equal(d, 0.0) {
+            if self.point1 == other.point1 || self.point1 == other.point2 {
+                return Some(self.point1);
+            } else if self.point2 == other.point1 || self.point2 == other.point2 {
+                return Some(self.point2);
             }
             return None;
         }
 
-        let s: f32 = s1 ^ tails;
-        let t: f32 = s2 ^ tails;
+        let s: f32 = s1.cross_product(tails);
+        let t: f32 = s2.cross_product(tails);
 
         let (s_sign, t_sign, d_sign): (Sign, Sign, Sign) =
             (Sign::from(s), Sign::from(t), Sign::from(d));
@@ -97,30 +100,37 @@ impl Segment {
             }
         {
             let t: f32 = t / d;
-            Some(self.points[0] + s1 * t)
+            Some(self.point1 + s1 * t)
         } else {
             None
         }
     }
 }
 impl FloatOperations for Segment {
-    fn correct(self, digits: i32) -> Self {
-        Segment::from(self.points.correct(digits))
+    fn correct_to(self, digits: i32) -> Self {
+        Segment {
+            point1: self.point1.correct_to(digits),
+            point2: self.point2.correct_to(digits),
+        }
     }
 
     fn round_up_to(self, digits: i32) -> Self {
-        Segment::from(self.points.round_up_to(digits))
+        Segment {
+            point1: self.point1.round_up_to(digits),
+            point2: self.point2.round_up_to(digits),
+        }
     }
 }
 impl Translatable for Segment {
     /// For a line segment, origin is a midpoint.
     ///
     fn origin(&self) -> Point {
-        (self.points[0] + self.points[1]) / 2.0
+        (self.point1 + self.point2) * 0.5
     }
 
     fn translate_on(&mut self, vector: Vector2) {
-        self.points.iter_mut().for_each(|point| *point += vector);
+        self.point1 += vector;
+        self.point2 += vector;
     }
 }
 impl Rotatable for Segment {
@@ -132,21 +142,16 @@ impl Rotatable for Segment {
 
     fn rotate_on(&mut self, angle: Angle) {
         let origin: Vector2 = self.origin();
-        let transform_matrix: Matrix3x3 = combine_matrices(vec![
-            Transform::Translation { vector: -origin }.matrix(),
-            Transform::Rotation { angle }.matrix(),
-            Transform::Translation { vector: origin }.matrix(),
-        ]);
-        self.points
-            .iter_mut()
-            .for_each(|point| *point = transform_matrix.apply_to(*point));
-    }
-}
-impl From<[Point; 2]> for Segment {
-    /// Shorthand for writing `Segment { points: ... }`.
-    ///
-    fn from(value: [Point; 2]) -> Self {
-        Segment { points: value }
+        let transform_matrix: Matrix3x3 = Transform::combine(
+            [
+                Transform::Translation { vector: -origin },
+                Transform::Rotation { angle },
+                Transform::Translation { vector: origin },
+            ]
+            .into_iter(),
+        );
+        self.point1 = transform_matrix.apply_to(self.point1);
+        self.point2 = transform_matrix.apply_to(self.point2);
     }
 }
 
@@ -181,7 +186,10 @@ pub trait PolygonLike: Shape {
 
         let mut edges: Vec<Segment> = Vec::with_capacity(n);
         for i in 0..n {
-            edges.push(Segment::from([vertices[i], vertices[(i + 1) % n]]));
+            edges.push(Segment {
+                point1: vertices[i],
+                point2: vertices[(i + 1) % n],
+            });
         }
         edges
     }
@@ -198,21 +206,29 @@ macro_rules! impl_contains_point_for_polygonlike {
             let mut inside: bool = false;
 
             for edge in self.edges() {
-                let [a, b] = edge.points;
+                let Segment {
+                    point1: a,
+                    point2: b,
+                } = edge;
                 if point == a || point == b {
                     return true;
                 }
 
-                if equal(point.y, a.y) && equal(point.y, b.y) && between(point.x, a.x, b.x) {
+                if almost_equal(point.y, a.y)
+                    && almost_equal(point.y, b.y)
+                    && between(point.x, a.x, b.x)
+                {
                     return true;
                 }
 
                 if between(point.y, a.y, b.y) {
-                    if equal(point.y, a.y) && b.y >= a.y || equal(point.y, b.y) && a.y >= b.y {
+                    if almost_equal(point.y, a.y) && b.y >= a.y
+                        || almost_equal(point.y, b.y) && a.y >= b.y
+                    {
                         continue;
                     }
-                    let c: f32 = (a - point) ^ (b - point);
-                    if equal(c, 0.0) {
+                    let c: f32 = (a - point).cross_product(b - point);
+                    if almost_equal(c, 0.0) {
                         return true;
                     }
                     if (a.y < b.y) == (c > 0.0) {
@@ -239,18 +255,18 @@ pub trait Convex: PolygonLike {}
 /// let mut rect: Rect = Rect::from_origin(
 ///     Point::zero(),
 ///     Angle::zero(),
-///     Size::from_value(3.0), Size::from_value(2.0)
+///     Size::try_from(3.0).expect("Value is in correct range."), Size::try_from(2.0).expect("Value is in correct range.")
 /// );
 /// assert_eq!(
 ///     rect.vertices(),
 ///     [
-///         Vertex::from([-1.5, 1.0]),
-///         Vertex::from([1.5, 1.0]),
-///         Vertex::from([1.5, -1.0]),
-///         Vertex::from([-1.5, -1.0]),
+///         Vertex { x: -1.5, y: 1.0 },
+///         Vertex { x: 1.5, y: 1.0 },
+///         Vertex { x: 1.5, y: -1.0 },
+///         Vertex { x: -1.5, y: -1.0 },
 ///     ]
 /// );
-/// assert!(rect.contains_point(Point::from([1.2, 0.7])));
+/// assert!(rect.contains_point(Point { x: 1.2, y: 0.7 }));
 /// assert_eq!(rect.width(), 3.0);
 /// assert_eq!(rect.height(), 2.0);
 /// ```
@@ -264,16 +280,16 @@ pub trait Convex: PolygonLike {}
 /// let mut rect: Rect = Rect::from_origin(
 ///     Point::zero(),
 ///     Angle::zero(),
-///     Size::from_value(3.0), Size::from_value(2.0)
+///     Size::try_from(3.0).expect("Value is in correct range."), Size::try_from(2.0).expect("Value is in correct range.")
 /// );
-/// rect.translate_on(Vector2::from([1.5, 1.0]));
+/// rect.translate_on(Vector2 { x: 1.5, y: 1.0 });
 /// assert_eq!(
 ///     rect.vertices(),
 ///     [
-///         Vertex::from([0.0, 2.0]),
-///         Vertex::from([3.0, 2.0]),
-///         Vertex::from([3.0, 0.0]),
-///         Vertex::from([0.0, 0.0]),
+///         Vertex { x: 0.0, y: 2.0 },
+///         Vertex { x: 3.0, y: 2.0 },
+///         Vertex { x: 3.0, y: 0.0 },
+///         Vertex { x: 0.0, y: 0.0 },
 ///     ]
 /// );
 /// ```
@@ -286,18 +302,18 @@ pub trait Convex: PolygonLike {}
 /// # use ggengine::mathcore::{Angle, Size};
 /// # use ggengine::mathcore::floats::FloatOperations;
 /// let mut rect: Rect = Rect::from_origin(
-///     Point::from([1.5, 1.0]),
+///     Point { x: 1.5, y: 1.0 },
 ///     Angle::zero(),
-///     Size::from_value(3.0), Size::from_value(2.0)
+///     Size::try_from(3.0).expect("Value is in correct range."), Size::try_from(2.0).expect("Value is in correct range.")
 /// );
 /// rect.rotate_on(Angle::from_degrees(90.0));
 /// assert_eq!(
-///     <[Vertex; 4]>::try_from(rect.vertices()).expect("Rectangle has 4 vertices").correct(2),
+///     <[Vertex; 4]>::try_from(rect.vertices()).expect("Rectangle has 4 vertices").correct_to(2),
 ///     [
-///         Vertex::from([0.5, -0.5]),
-///         Vertex::from([0.5, 2.5]),
-///         Vertex::from([2.5, 2.5]),
-///         Vertex::from([2.5, -0.5]),
+///         Vertex { x: 0.5, y: -0.5 },
+///         Vertex { x: 0.5, y: 2.5 },
+///         Vertex { x: 2.5, y: 2.5 },
+///         Vertex { x: 2.5, y: -0.5 },
 ///     ]
 /// );
 /// ```
@@ -309,18 +325,22 @@ pub trait Convex: PolygonLike {}
 /// # use ggengine::mathcore::vectors::{Vector2, Vertex, Point};
 /// # use ggengine::mathcore::{Angle, Size};
 /// let mut rect: Rect = Rect::from_origin(
-///     Point::from([1.5, 1.0]),
+///     Point { x: 1.5, y: 1.0 },
 ///     Angle::zero(),
-///     Size::from_value(3.0), Size::from_value(2.0)
+///     Size::try_from(3.0).expect("Value is in correct range."),
+///     Size::try_from(2.0).expect("Value is in correct range.")
 /// );
-/// rect.scale((Size::from_value(2.0), Size::from_value(2.0)));
+/// rect.scale((
+///     Size::try_from(2.0).expect("Value is in correct range."),
+///     Size::try_from(2.0).expect("Value is in correct range.")
+/// ));
 /// assert_eq!(
 ///     rect.vertices(),
 ///     [
-///         Vertex::from([-1.5, 3.0]),
-///         Vertex::from([4.5, 3.0]),
-///         Vertex::from([4.5, -1.0]),
-///         Vertex::from([-1.5, -1.0]),
+///         Vertex { x: -1.5, y: 3.0 },
+///         Vertex { x: 4.5, y: 3.0 },
+///         Vertex { x: 4.5, y: -1.0 },
+///         Vertex { x: -1.5, y: -1.0 },
 ///     ]
 /// );
 /// ```
@@ -359,16 +379,19 @@ impl Rect {
         let size: (Size, Size) = (width, height);
 
         let model: [Vertex; 4] = [
-            Vertex::from([-0.5, 0.5]),
-            Vertex::from([0.5, 0.5]),
-            Vertex::from([0.5, -0.5]),
-            Vertex::from([-0.5, -0.5]),
+            Vertex { x: -0.5, y: 0.5 },
+            Vertex { x: 0.5, y: 0.5 },
+            Vertex { x: 0.5, y: -0.5 },
+            Vertex { x: -0.5, y: -0.5 },
         ];
-        let transform_matrix: Matrix3x3 = combine_matrices(vec![
-            Transform::Scaling { size_scale: size }.matrix(),
-            Transform::Rotation { angle }.matrix(),
-            Transform::Translation { vector: origin }.matrix(),
-        ]);
+        let transform_matrix: Matrix3x3 = Transform::combine(
+            [
+                Transform::Scaling { size_scale: size },
+                Transform::Rotation { angle },
+                Transform::Translation { vector: origin },
+            ]
+            .into_iter(),
+        );
         let vertices: [Vertex; 4] = model.map(|vertex| transform_matrix.apply_to(vertex));
 
         Rect {
@@ -394,11 +417,12 @@ impl Rect {
     /// let rect: Rect = Rect::from_origin(
     ///     Point::zero(),
     ///     Angle::from_degrees(45.0),
-    ///     Size::from_value(2.0), Size::from_value(2.0)
+    ///     Size::try_from(2.0).expect("Value is in correct range."),
+    ///     Size::try_from(2.0).expect("Value is in correct range.")
     /// );
     /// assert_eq!(
     ///     rect.aabb().round_up_to(1),
-    ///     [Point::from([-1.4, -1.4]), Point::from([1.4, 1.4])] // sqrt(2)
+    ///     [Point { x: -1.4, y: -1.4 }, Point { x: 1.4, y: 1.4 }] // sqrt(2)
     /// );
     /// ```
     ///
@@ -415,7 +439,7 @@ impl Rect {
             min_y = min_y.min(vertex.y);
             max_y = max_y.max(vertex.y);
         }
-        [Point::from([min_x, min_y]), Point::from([max_x, max_y])]
+        [Point { x: min_x, y: min_y }, Point { x: max_x, y: max_y }]
     }
 }
 impl Shape for Rect {
@@ -456,17 +480,18 @@ impl Rotatable for Rect {
     fn rotate_on(&mut self, angle: Angle) {
         self.angle = angle;
 
-        let transform_matrix: Matrix3x3 = combine_matrices(vec![
-            Transform::Translation {
-                vector: -self.origin,
-            }
-            .matrix(),
-            Transform::Rotation { angle }.matrix(),
-            Transform::Translation {
-                vector: self.origin,
-            }
-            .matrix(),
-        ]);
+        let transform_matrix: Matrix3x3 = Transform::combine(
+            [
+                Transform::Translation {
+                    vector: -self.origin,
+                },
+                Transform::Rotation { angle },
+                Transform::Translation {
+                    vector: self.origin,
+                },
+            ]
+            .into_iter(),
+        );
         self.vertices
             .iter_mut()
             .for_each(|vertex| *vertex = transform_matrix.apply_to(*vertex));
@@ -481,23 +506,23 @@ impl Scalable for Rect {
         self.size.0 *= size_scale.0;
         self.size.1 *= size_scale.1;
 
-        let transform_matrix: Matrix3x3 = combine_matrices(vec![
-            Transform::Translation {
-                vector: -self.origin,
-            }
-            .matrix(),
-            Transform::Scaling { size_scale }.matrix(),
-            Transform::Translation {
-                vector: self.origin,
-            }
-            .matrix(),
-        ]);
+        let transform_matrix: Matrix3x3 = Transform::combine(
+            [
+                Transform::Translation {
+                    vector: -self.origin,
+                },
+                Transform::Scaling { size_scale },
+                Transform::Translation {
+                    vector: self.origin,
+                },
+            ]
+            .into_iter(),
+        );
         self.vertices
             .iter_mut()
             .for_each(|vertex| *vertex = transform_matrix.apply_to(*vertex));
     }
 }
-impl Transformable for Rect {}
 
 #[cfg(test)]
 mod tests {
@@ -512,25 +537,40 @@ mod tests {
     fn line_segment2d() {
         use super::Segment;
 
-        let mut line1: Segment = Segment::from([Point::from([0.0, 0.0]), Point::from([4.0, 4.0])]);
+        let mut line1: Segment = Segment {
+            point1: Point { x: 0.0, y: 0.0 },
+            point2: Point { x: 4.0, y: 4.0 },
+        };
         assert_eq!(line1.length(), 4.0 * 2.0_f32.sqrt());
 
-        let mut line2: Segment = Segment::from([Point::from([0.0, 6.0]), Point::from([3.0, 0.0])]);
+        let mut line2: Segment = Segment {
+            point1: Point { x: 0.0, y: 6.0 },
+            point2: Point { x: 3.0, y: 0.0 },
+        };
 
         assert_eq!((line1.k(), line1.b()), (1.0, 0.0));
         assert_eq!((line2.k(), line2.b()), (-2.0, 6.0));
 
-        assert_eq!(line1.intersection(line2).unwrap(), Point::from([2.0, 2.0]));
+        assert_eq!(line1.intersection(line2).unwrap(), Point { x: 2.0, y: 2.0 });
 
-        line1.translate_on(Vector2::from([-2.0, -2.0]));
+        line1.translate_on(Vector2 { x: -2.0, y: -2.0 });
         line1.rotate_on(Angle::from_degrees(45.0));
-        line2 = Segment::from([Point::from([0.0, 0.0]), Point::from([0.0, 4.0])]);
+        line2 = Segment {
+            point1: Point { x: 0.0, y: 0.0 },
+            point2: Point { x: 0.0, y: 4.0 },
+        };
 
         assert_eq!(line1.k(), f32::INFINITY);
         assert!(line1.intersection(line2).is_none());
 
-        line1 = Segment::from([Point::from([-1.0, 2.0]), Point::from([1.0, 2.0])]);
-        line2 = Segment::from([Point::from([1.0, 2.0]), Point::from([2.0, 2.0])]);
+        line1 = Segment {
+            point1: Point { x: -1.0, y: 2.0 },
+            point2: Point { x: 1.0, y: 2.0 },
+        };
+        line2 = Segment {
+            point1: Point { x: 1.0, y: 2.0 },
+            point2: Point { x: 2.0, y: 2.0 },
+        };
         assert!(line1.intersection(line2).is_some());
     }
 
@@ -540,41 +580,53 @@ mod tests {
         use crate::mathcore::{transforms::Scalable, Size};
 
         let mut rect1: Rect = Rect::from_origin(
-            Point::from([1.0, 1.0]),
+            Point { x: 1.0, y: 1.0 },
             Angle::zero(),
-            Size::from_value(3.0),
-            Size::from_value(2.0),
+            Size::try_from(3.0).expect("Value is in correct range."),
+            Size::try_from(2.0).expect("Value is in correct range."),
         );
 
         assert_eq!(
             rect1.vertices(),
             [
-                Point::from([-0.5, 2.0]),
-                Point::from([2.5, 2.0]),
-                Point::from([2.5, 0.0]),
-                Point::from([-0.5, 0.0])
+                Point { x: -0.5, y: 2.0 },
+                Point { x: 2.5, y: 2.0 },
+                Point { x: 2.5, y: 0.0 },
+                Point { x: -0.5, y: 0.0 }
             ]
         );
         assert_eq!(
             rect1.edges(),
             [
-                Segment::from([Point::from([-0.5, 2.0]), Point::from([2.5, 2.0])]),
-                Segment::from([Point::from([2.5, 2.0]), Point::from([2.5, 0.0])]),
-                Segment::from([Point::from([2.5, 0.0]), Point::from([-0.5, 0.0])]),
-                Segment::from([Point::from([-0.5, 0.0]), Point::from([-0.5, 2.0])]),
+                Segment {
+                    point1: Point { x: -0.5, y: 2.0 },
+                    point2: Point { x: 2.5, y: 2.0 }
+                },
+                Segment {
+                    point1: Point { x: 2.5, y: 2.0 },
+                    point2: Point { x: 2.5, y: 0.0 }
+                },
+                Segment {
+                    point1: Point { x: 2.5, y: 0.0 },
+                    point2: Point { x: -0.5, y: 0.0 }
+                },
+                Segment {
+                    point1: Point { x: -0.5, y: 0.0 },
+                    point2: Point { x: -0.5, y: 2.0 }
+                },
             ]
         );
 
         let mut rect2: Rect = Rect::from_origin(
-            Point::from([3.0, 3.0]),
+            Point { x: 3.0, y: 3.0 },
             Angle::zero(),
-            Size::from_value(3.0),
-            Size::from_value(2.0),
+            Size::try_from(3.0).expect("Value is in correct range."),
+            Size::try_from(2.0).expect("Value is in correct range."),
         );
 
         // translation
-        rect1.translate_on(Vector2::from([1.0, 1.0]));
-        rect2.translate_to(Point::from([2.0, 2.0]));
+        rect1.translate_on(Vector2 { x: 1.0, y: 1.0 });
+        rect2.translate_to(Point { x: 2.0, y: 2.0 });
         assert_eq!(rect1.vertices(), rect2.vertices());
 
         // rotation
@@ -583,8 +635,14 @@ mod tests {
         assert_eq!(rect1.vertices(), rect2.vertices());
 
         // scaling
-        rect1.scale((Size::from_value(3.0), Size::from_value(3.0)));
-        rect2.set_size((Size::from_value(9.0), Size::from_value(6.0)));
+        rect1.scale((
+            Size::try_from(3.0).expect("Value is in correct range."),
+            Size::try_from(3.0).expect("Value is in correct range."),
+        ));
+        rect2.set_size((
+            Size::try_from(9.0).expect("Value is in correct range."),
+            Size::try_from(6.0).expect("Value is in correct range."),
+        ));
         assert_eq!(rect1.vertices(), rect2.vertices());
     }
 }

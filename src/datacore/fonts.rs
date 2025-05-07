@@ -344,8 +344,14 @@ impl Font {
         self.font
             .find_glyph_metrics(character)
             .map(|sdl_metrics| GlyphMetrics {
-                min: PointInt::from([sdl_metrics.minx, sdl_metrics.miny]),
-                max: PointInt::from([sdl_metrics.maxx, sdl_metrics.maxy]),
+                min: PointInt {
+                    x: sdl_metrics.minx,
+                    y: sdl_metrics.miny,
+                },
+                max: PointInt {
+                    x: sdl_metrics.maxx,
+                    y: sdl_metrics.maxy,
+                },
                 advance: sdl_metrics.advance,
             })
     }

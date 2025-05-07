@@ -1,8 +1,8 @@
-//! `mathcore::ext` hidden submodule supplies helper newtypes, enums, structs etc. that are
+//! `mathcore::primitives` hidden submodule supplies helper newtypes, enums, structs etc. that are
 //! used throughout `ggengine` crate.
 //!
 
-use crate::mathcore::floats::{equal, FloatOperations};
+use crate::mathcore::floats::{almost_equal, FloatOperations};
 use serde::{Deserialize, Serialize};
 use std::{
     f32::consts::{FRAC_PI_2, FRAC_PI_3, FRAC_PI_4, FRAC_PI_6, TAU},
@@ -269,7 +269,7 @@ impl Angle {
     /// # use ggengine::mathcore::Angle;
     /// # use ggengine::mathcore::floats::FloatOperations;
     /// let angle: Angle = Angle::from_degrees(90.0);
-    /// assert_eq!(angle.sin().correct(0), 1.0);
+    /// assert_eq!(angle.sin().correct_to(0), 1.0);
     /// ```
     ///
     pub fn sin(&self) -> f32 {
@@ -282,7 +282,7 @@ impl Angle {
     /// # use ggengine::mathcore::Angle;
     /// # use ggengine::mathcore::floats::FloatOperations;
     /// let angle: Angle = Angle::from_degrees(90.0);
-    /// assert_eq!(angle.cos().correct(0), 0.0);
+    /// assert_eq!(angle.cos().correct_to(0), 0.0);
     /// ```
     ///
     pub fn cos(&self) -> f32 {
@@ -302,8 +302,8 @@ impl Angle {
     }
 }
 impl FloatOperations for Angle {
-    fn correct(self, digits: i32) -> Self {
-        Angle(self.0.correct(digits))
+    fn correct_to(self, digits: i32) -> Self {
+        Angle(self.0.correct_to(digits))
     }
 
     fn round_up_to(self, digits: i32) -> Self {
@@ -367,46 +367,30 @@ impl DivAssign<f32> for Angle {
 }
 impl PartialEq for Angle {
     fn eq(&self, other: &Self) -> bool {
-        equal(self.0, other.0)
+        almost_equal(self.0, other.0)
     }
 }
 impl Eq for Angle {}
 
 /// [`Size`] is a newtype that restricts size's value to (0.0; +inf).
-/// If given value is not finite or equal to zero, 1.0 will be set as size value.
 ///
 /// # Example
 /// ```rust
 /// # use ggengine::mathcore::Size;
-/// assert_eq!(Size::from_value(-10.0).get(), 10.0);
-/// assert_eq!(Size::from_value(0.0).get(), 1.0);
-/// assert_eq!(Size::from_value(0.1).get(), 0.1);
+/// assert!(Size::try_from(-10.0).is_err());
+/// assert!(Size::try_from(0.0).is_err());
+/// assert_eq!(Size::try_from(0.1).expect("Value is in correct range").get(), 0.1);
 /// ```
 ///
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialOrd)]
 pub struct Size(f32);
 impl Size {
-    /// Normalizes given size to (0.0; +inf).
-    ///
-    fn normalize(size: f32) -> f32 {
-        if !size.is_finite() || size == 0.0 || size == -0.0 {
-            return 1.0;
-        }
-        size.abs()
-    }
-
-    /// Initializes [`Size`] from `f32` value.
-    ///
-    pub fn from_value(value: f32) -> Self {
-        Size(Self::normalize(value))
-    }
-
     /// Returns size value.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::mathcore::Size;
-    /// let size: Size = Size::from_value(-10.0);
+    /// let size: Size = Size::try_from(10.0).expect("Value is in correct range.");
     /// assert_eq!(size.get(), 10.0);
     /// ```
     ///
@@ -414,51 +398,41 @@ impl Size {
         self.0
     }
 }
-impl FloatOperations for Size {
-    fn correct(self, digits: i32) -> Self {
-        Size::from_value(self.0.correct(digits))
-    }
+impl TryFrom<f32> for Size {
+    type Error = ();
 
-    fn round_up_to(self, digits: i32) -> Self {
-        Size::from_value(self.0.round_up_to(digits))
+    fn try_from(value: f32) -> Result<Self, Self::Error> {
+        if !value.is_finite() || value <= 0.0 {
+            Err(())
+        } else {
+            Ok(Size(value))
+        }
     }
 }
 impl Add<Self> for Size {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        Size::from_value(self.0 + rhs.0)
-    }
-}
-impl Sub<Self> for Size {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Size::from_value(self.0 - rhs.0)
+        Size::try_from(self.0 + rhs.0).expect("Value is guaranteed to be in correct range.")
     }
 }
 impl Mul<Self> for Size {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        Size::from_value(self.0 * rhs.0)
+        Size::try_from(self.0 * rhs.0).expect("Value is guaranteed to be in correct range.")
     }
 }
 impl Div<Self> for Size {
     type Output = Self;
 
     fn div(self, rhs: Self) -> Self::Output {
-        Size::from_value(self.0 / rhs.0)
+        Size::try_from(self.0 / rhs.0).expect("Value is guaranteed to be in correct range.")
     }
 }
 impl AddAssign<Self> for Size {
     fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs;
-    }
-}
-impl SubAssign<Self> for Size {
-    fn sub_assign(&mut self, rhs: Self) {
-        *self = *self - rhs;
     }
 }
 impl MulAssign<Self> for Size {
@@ -473,7 +447,7 @@ impl DivAssign<Self> for Size {
 }
 impl PartialEq for Size {
     fn eq(&self, other: &Self) -> bool {
-        equal(self.0, other.0)
+        almost_equal(self.0, other.0)
     }
 }
 impl Eq for Size {}
@@ -507,7 +481,6 @@ pub struct Color {
     ///
     pub a: u8,
 }
-
 impl Color {
     /// Color that corresponds to white.
     ///

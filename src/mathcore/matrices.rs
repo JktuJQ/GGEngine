@@ -3,7 +3,7 @@
 //!
 
 use crate::mathcore::{
-    floats::{equal, FloatOperations},
+    floats::{almost_equal, FloatOperations},
     vectors::Vector2,
     Sign,
 };
@@ -239,7 +239,7 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
     ///     [2.0, 4.0, -3.0, 29.0]
     /// ]);
     /// assert_eq!(
-    ///     matrix.rref().correct(0).as_array(),
+    ///     matrix.rref().correct_to(0).as_array(),
     ///     [
     ///         [1.0, 0.0, 0.0, 2.0],
     ///         [0.0, 1.0, 0.0, 4.0],
@@ -268,10 +268,10 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
     /// # use ggengine::mathcore::matrices::Matrix;
     /// let m1: Matrix<1, 3> = Matrix::from([[1.0, 2.0, 3.0]]);
     /// let m2: Matrix<3, 1> = Matrix::from([[1.0], [2.0], [3.0]]);
-    /// assert_eq!(m1.dot_product(m2).as_array(), [[14.0]]);
+    /// assert_eq!(m1.matmul(m2).as_array(), [[14.0]]);
     /// ```
     ///
-    pub fn dot_product<const RHS_COLUMNS: usize>(
+    pub fn matmul<const RHS_COLUMNS: usize>(
         self,
         other: Matrix<COLUMNS, RHS_COLUMNS>,
     ) -> Matrix<ROWS, RHS_COLUMNS> {
@@ -424,7 +424,7 @@ impl<const N: usize> Matrix<N, N> {
     /// ]);
     /// let mut inverse: Matrix<3, 3> = matrix
     ///     .inverse()
-    ///     .expect("Should not fail: determinant is not equal to zero.").round_up_to(2);
+    ///     .expect("Determinant is not equal to zero.").round_up_to(2);
     /// assert_eq!(
     ///     inverse.as_array(),
     ///     [
@@ -471,12 +471,12 @@ impl<const ROWS: usize, const COLUMNS: usize> FloatOperations for Matrix<ROWS, C
     /// ```rust
     /// # use ggengine::mathcore::matrices::Matrix;
     /// # use ggengine::mathcore::floats::FloatOperations;
-    /// let mut matrix: Matrix<1, 3> = Matrix::from([[-0.0, 0.00000001, 0.99999999]]).correct(0);
+    /// let mut matrix: Matrix<1, 3> = Matrix::from([[-0.0, 0.00000001, 0.99999999]]).correct_to(0);
     /// assert_eq!(matrix.as_array(), [[0.0, 0.0, 1.0]]);
     /// ```
     ///
-    fn correct(self, digits: i32) -> Self {
-        self.map(|elem| elem.correct(digits))
+    fn correct_to(self, digits: i32) -> Self {
+        self.map(|elem| elem.correct_to(digits))
     }
     /// Constructs new matrix by rounding every matrix element up to specified number of digits after floating
     /// point.
@@ -550,7 +550,7 @@ impl<const ROWS: usize, const COLUMNS: usize, const RHS_COLUMNS: usize>
     /// Is equal to `self.dot(rhs)`
     ///
     fn mul(self, rhs: Matrix<COLUMNS, RHS_COLUMNS>) -> Self::Output {
-        self.dot_product(rhs)
+        self.matmul(rhs)
     }
 }
 
@@ -658,7 +658,7 @@ impl<const ROWS: usize, const COLUMNS: usize> PartialEq for Matrix<ROWS, COLUMNS
     fn eq(&self, other: &Self) -> bool {
         for r in 0..ROWS {
             for c in 0..COLUMNS {
-                if !equal(self.arr[r][c], other.arr[r][c]) {
+                if !almost_equal(self.arr[r][c], other.arr[r][c]) {
                     return false;
                 }
             }
@@ -693,7 +693,7 @@ impl From<Vector2> for Matrix3x1 {
     /// ```rust
     /// # use ggengine::mathcore::matrices::{Matrix3x3, Matrix3x1};
     /// # use ggengine::mathcore::vectors::Vector2;
-    /// let vector: Vector2 = Vector2::from([0.0, 2.0]);
+    /// let vector: Vector2 = Vector2 { x: 0.0, y: 2.0 };
     /// let rotation_matrix: Matrix3x3 = Matrix3x3::from([
     ///     [0.66, -0.75, 0.0],
     ///     [0.75, 0.66, 0.0],
@@ -720,18 +720,21 @@ impl From<Matrix3x1> for Vector2 {
     /// ```rust
     /// # use ggengine::mathcore::matrices::{Matrix3x3, Matrix3x1};
     /// # use ggengine::mathcore::vectors::Vector2;
-    /// let vector: Vector2 = Vector2::from([0.0, 2.0]);
+    /// let vector: Vector2 = Vector2 { x: 0.0, y: 2.0 };
     /// let rotation_matrix: Matrix3x3 = Matrix3x3::from([
     ///     [0.66, -0.75, 0.0],
     ///     [0.75, 0.66, 0.0],
     ///     [0.0, 0.0, 1.0]
     /// ]);
     /// let res: Vector2 = Vector2::from(rotation_matrix * Matrix3x1::from(vector));
-    /// assert_eq!(res, Vector2::from([-1.5, 1.32]));
+    /// assert_eq!(res, Vector2 { x: -1.5, y: 1.32 });
     /// ```
     ///
     fn from(matrix: Matrix3x1) -> Self {
-        Vector2::from([matrix[0][0], matrix[1][0]])
+        Vector2 {
+            x: matrix[0][0],
+            y: matrix[1][0],
+        }
     }
 }
 /// Type alias for 3x3 [`Matrix`] (two-dimensional transform matrix).

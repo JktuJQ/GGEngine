@@ -1,7 +1,7 @@
 //! `mathcore::floats` submodule implements several consts, functions and traits that help in
 //! work with `f32` type.
 //!
-//! [`equal`] function and [`EPSILON`] const are dealing with floating point equality.
+//! [`almost_equal`] function and [`EPSILON`] const are dealing with floating point equality.
 //!
 //! [`FloatOperations`] trait and [`CLOSE_TO_ZERO`], [`CLOSE_TO_ONE`] consts are dealing with
 //! distortions that may be caused by float operations.
@@ -15,13 +15,15 @@
 pub const EPSILON: f32 = 0.00001;
 /// This function implements floating point equality for `ggengine` crate.
 ///
+/// It is used for implementing `PartialEq` on types that are based on float.
+///
 /// # Example
 /// ```rust
-/// # use ggengine::mathcore::floats::equal;
-/// assert!(equal(0.15 + 0.15, 0.1 + 0.2));
+/// # use ggengine::mathcore::floats::almost_equal;
+/// assert!(almost_equal(0.15 + 0.15, 0.1 + 0.2));
 /// ```
 ///
-pub fn equal(a: f32, b: f32) -> bool {
+pub fn almost_equal(a: f32, b: f32) -> bool {
     if a == b {
         return true;
     }
@@ -41,7 +43,6 @@ pub const CLOSE_TO_ZERO: f32 = 0.0001;
 /// It defines the threshold for number to be considered big enough to then be ceiled.
 ///
 pub const CLOSE_TO_ONE: f32 = 0.9999;
-
 /// [`FloatOperations`] trait defines `correct` and `round_up_to` associated functions that work
 /// with floating point values.
 ///
@@ -52,7 +53,7 @@ pub trait FloatOperations {
     /// 0.0001 (anything that is less than `CLOSE_TO_ZERO`) into 0.0 and
     /// 0.9999 (anything that is greater than `CLOSE_TO_ONE`) into 1.0.
     ///
-    fn correct(self, digits: i32) -> Self;
+    fn correct_to(self, digits: i32) -> Self;
 
     /// Rounds to given amount of digits after floating point.
     ///
@@ -70,20 +71,20 @@ impl FloatOperations for f32 {
     /// # Example
     /// ```rust
     /// # use ggengine::mathcore::floats::FloatOperations;
-    /// assert_eq!(-0.0_f32.correct(0), 0.0);
-    /// assert_eq!(0.00009_f32.correct(0), 0.0);
-    /// assert_eq!(0.99999_f32.correct(0), 1.0);
+    /// assert_eq!(-0.0_f32.correct_to(0), 0.0);
+    /// assert_eq!(0.00009_f32.correct_to(0), 0.0);
+    /// assert_eq!(0.99999_f32.correct_to(0), 1.0);
     ///
-    /// assert_eq!(0.200009_f32.correct(1), 0.2);
-    /// assert_eq!(2.00009_f32.correct(0) / 10.0, 0.2);
+    /// assert_eq!(0.200009_f32.correct_to(1), 0.2);
+    /// assert_eq!(2.00009_f32.correct_to(0) / 10.0, 0.2);
     ///
-    /// assert_eq!(-0.199999_f32.correct(1), -0.2);
-    /// assert_eq!(-1.99999_f32.correct(0) / 10.0, -0.2);
+    /// assert_eq!(-0.199999_f32.correct_to(1), -0.2);
+    /// assert_eq!(-1.99999_f32.correct_to(0) / 10.0, -0.2);
     ///
-    /// assert_eq!(300009.0_f32.correct(-5), 300000.0);
+    /// assert_eq!(300009.0_f32.correct_to(-5), 300000.0);
     /// ```
     ///
-    fn correct(self, digits: i32) -> Self {
+    fn correct_to(self, digits: i32) -> Self {
         let mul: f32 = 10_f32.powi(digits);
 
         let n: f32 = self * mul;
@@ -117,12 +118,9 @@ impl FloatOperations for f32 {
         (self * mul).round() / mul
     }
 }
-impl<T, const N: usize> FloatOperations for [T; N]
-where
-    T: FloatOperations,
-{
-    fn correct(self, digits: i32) -> Self {
-        self.map(|elem| elem.correct(digits))
+impl<T: FloatOperations, const N: usize> FloatOperations for [T; N] {
+    fn correct_to(self, digits: i32) -> Self {
+        self.map(|elem| elem.correct_to(digits))
     }
 
     fn round_up_to(self, digits: i32) -> Self {
