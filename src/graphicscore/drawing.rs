@@ -285,7 +285,7 @@ pub struct ImageCanvas<'a> {
     ///
     canvas: RenderSurfaceCanvas<'a>,
 }
-impl<'a> fmt::Debug for ImageCanvas<'a> {
+impl fmt::Debug for ImageCanvas<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ImageCanvas")
     }
@@ -307,7 +307,7 @@ pub struct TextureCanvas<'a> {
     ///
     canvas: &'a mut RenderWindowCanvas,
 }
-impl<'a> fmt::Debug for TextureCanvas<'a> {
+impl fmt::Debug for TextureCanvas<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "TextureCanvas")
     }

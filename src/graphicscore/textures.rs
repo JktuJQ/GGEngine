@@ -85,7 +85,7 @@ enum InnerTextureCreator<'a> {
     ///
     ForWindow(RenderTextureCreator<WindowContext>),
 }
-impl<'a> InnerTextureCreator<'a> {
+impl InnerTextureCreator<'_> {
     /// Returns the best pixel format for `InnerTextureCreator` or `None`, if the format is not recognised by `ggengine`.
     ///
     /// Even if the format is not recognised, it is still usable by `ggengine`.
@@ -176,7 +176,7 @@ impl<'a> InnerTextureCreator<'a> {
         .map_err(|message| Error::new(ErrorKind::InvalidInput, message))
     }
 }
-impl<'a> fmt::Debug for InnerTextureCreator<'a> {
+impl fmt::Debug for InnerTextureCreator<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             InnerTextureCreator::ForImage(_) => write!(f, "`TextureCreator` for `Image`s"),
@@ -360,7 +360,7 @@ impl<'a> Texture<'a> {
         AccessType::from_sdl_texture_access(self.texture.query().access)
     }
 }
-impl<'a> fmt::Debug for Texture<'a> {
+impl fmt::Debug for Texture<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Texture").finish()
     }

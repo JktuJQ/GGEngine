@@ -118,7 +118,7 @@ pub trait Blendable {
     ///
     fn blend_mode(&self) -> BlendingType;
 }
-impl<'a> Blendable for Image<'a> {
+impl Blendable for Image<'_> {
     fn set_blend_mode(&mut self, blend_mode: BlendingType) {
         self.get_sdl_surface_mut()
             .set_blend_mode(blend_mode.to_sdl_blend_mode())
@@ -128,7 +128,7 @@ impl<'a> Blendable for Image<'a> {
         BlendingType::from_sdl_blend_mode(self.get_sdl_surface().blend_mode())
     }
 }
-impl<'a> Blendable for Texture<'a> {
+impl Blendable for Texture<'_> {
     fn set_blend_mode(&mut self, blend_mode: BlendingType) {
         self.get_sdl_texture_mut()
             .set_blend_mode(blend_mode.to_sdl_blend_mode())
@@ -150,7 +150,7 @@ pub trait ColorModulatable {
     ///
     fn color_modulation(&self) -> Color;
 }
-impl<'a> ColorModulatable for Image<'a> {
+impl ColorModulatable for Image<'_> {
     fn set_color_modulation(&mut self, color: Color) {
         self.get_sdl_surface_mut()
             .set_color_mod(SdlColor::from(color.to_rgba()))
@@ -160,7 +160,7 @@ impl<'a> ColorModulatable for Image<'a> {
         Color::from_rgba(r, g, b, a)
     }
 }
-impl<'a> ColorModulatable for Texture<'a> {
+impl ColorModulatable for Texture<'_> {
     fn set_color_modulation(&mut self, color: Color) {
         let (r, g, b, a): (u8, u8, u8, u8) = color.to_rgba();
 
