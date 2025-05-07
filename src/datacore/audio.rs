@@ -145,7 +145,7 @@ impl FromFile for Sound {
     /// # use ggengine::datacore::audio::Sound;
     /// # use ggengine::datacore::assets::FromFile;
     /// # use std::path::Path;
-    /// let sound: Sound = Sound::from_file(Path::new("s.wav")).expect("Filename should be correct");
+    /// let sound: Sound = Sound::from_file(Path::new("s.wav")).expect("Filename should be correct.");
     /// ```
     ///
     fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
@@ -215,7 +215,7 @@ impl FromFile for Music {
     /// # use ggengine::datacore::audio::Music;
     /// # use ggengine::datacore::assets::FromFile;
     /// # use std::path::Path;
-    /// let sound: Music = Music::from_file(Path::new("m.mp3")).expect("Filename should be correct");
+    /// let sound: Music = Music::from_file(Path::new("m.mp3")).expect("Filename should be correct.");
     /// ```
     ///
     fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
@@ -286,13 +286,13 @@ impl Channel for SoundChannel {
         let _ = self
             .0
             .play(&data.chunk, loops.unwrap_or(-1))
-            .expect("Audio driver must be available");
+            .expect("Audio driver must be available..");
     }
     fn fade_in(&self, data: &Self::AudioData, loops: Option<i32>, fading_time: i32) {
         let _ = self
             .0
             .fade_in(&data.chunk, loops.unwrap_or(-1), fading_time)
-            .expect("Audio driver must be available");
+            .expect("Audio driver must be available..");
     }
 
     fn pause(&self) {
@@ -348,7 +348,7 @@ impl SoundChannel {
     pub fn reverse_stereo(&self, flip: bool) {
         self.0
             .set_reverse_stereo(flip)
-            .expect("Audio driver must be available");
+            .expect("Audio driver must be available..");
     }
 
     /// Sets a panning effect, where left and right is the volume of the left and right channels.
@@ -358,7 +358,7 @@ impl SoundChannel {
     pub fn set_panning(&self, left: u8, right: u8) {
         self.0
             .set_panning(left, right)
-            .expect("Audio driver must be available");
+            .expect("Audio driver must be available..");
     }
     /// This effect simulates a simple attenuation of volume due to distance.
     ///
@@ -367,7 +367,7 @@ impl SoundChannel {
     pub fn set_distance(&self, distance: u8) {
         self.0
             .set_distance(distance)
-            .expect("Audio driver must be available");
+            .expect("Audio driver must be available..");
     }
     /// This effect emulates a simple 3D audio effect.
     ///
@@ -377,7 +377,7 @@ impl SoundChannel {
     pub fn set_position(&self, angle: Angle, distance: u8) {
         self.0
             .set_position(angle.degrees() as i16, distance)
-            .expect("Audio driver must be available");
+            .expect("Audio driver must be available..");
     }
 
     /// Unregisters panning effect.
@@ -385,21 +385,21 @@ impl SoundChannel {
     pub fn unset_panning(&self) {
         self.0
             .unset_panning()
-            .expect("Audio driver must be available");
+            .expect("Audio driver must be available..");
     }
     /// Unregisters distance effect.
     ///
     pub fn unset_distance(&self) {
         self.0
             .unset_distance()
-            .expect("Audio driver must be available");
+            .expect("Audio driver must be available..");
     }
     /// Unregisters position effect.
     ///
     pub fn unset_position(&self) {
         self.0
             .unset_position()
-            .expect("Audio driver must be available");
+            .expect("Audio driver must be available..");
     }
 }
 /// [`MusicChannel`] is a singleton that represents channel on which [`Music`] can be played.
@@ -414,12 +414,12 @@ impl Channel for MusicChannel {
     fn play(&self, data: &Self::AudioData, loops: Option<i32>) {
         data.music
             .play(loops.unwrap_or(-1))
-            .expect("Audio driver must be available");
+            .expect("Audio driver must be available..");
     }
     fn fade_in(&self, data: &Self::AudioData, loops: Option<i32>, fading_time: i32) {
         data.music
             .fade_in(loops.unwrap_or(-1), fading_time)
-            .expect("Audio driver must be available");
+            .expect("Audio driver must be available..");
     }
 
     fn pause(&self) {
@@ -439,7 +439,7 @@ impl Channel for MusicChannel {
         MixerMusic::halt();
     }
     fn fade_out(&self, fading_time: i32) {
-        MixerMusic::fade_out(fading_time).expect("Audio driver must be available");
+        MixerMusic::fade_out(fading_time).expect("Audio driver must be available..");
     }
 }
 
@@ -588,6 +588,7 @@ impl Default for AudioChannels {
         Self::Stereo
     }
 }
+
 /// [`MIXER_CONTEXT`] global static variable handles `sdl2::mixer` context.
 ///
 static MIXER_CONTEXT: OnceLock<MixerContext> = OnceLock::new();
@@ -606,6 +607,7 @@ impl AudioSystem {
     pub const DEFAULT_CHUNK_SIZE: u32 = 512;
 
     /// Initializes audio system, prepares libraries for use and opens default audio device for playback.
+    /// If system is already initialized, does nothing; don't fear to 're-init' when in doubt.
     ///
     /// Arguments:
     /// 1. `flags` specify audio formats that are going to be supported by the app.
@@ -635,19 +637,19 @@ impl AudioSystem {
                 mixer_init(MixerInitFlag::from_bits(audio_format.bits()).expect(
                     "`AudioFormat` constants are the same as in `InitFlag` bitflags struct",
                 ))
-                .expect("Audio driver should be available"),
+                .expect("Audio driver should be available."),
             )
             .is_err()
         {
             return;
         }
         mixer_open_audio(
-            i32::try_from(frequency).expect("Frequency value should not exceed `i32::MAX`"),
+            i32::try_from(frequency).expect("Frequency value should not exceed `i32::MAX`."),
             sample_format.to_sdl_u16(),
             channels as i32,
-            i32::try_from(chunk_size).expect("Chunk size value should not exceed `i32::MAX`"),
+            i32::try_from(chunk_size).expect("Chunk size value should not exceed `i32::MAX`."),
         )
-        .expect("Audio device should be available");
+        .expect("Audio device should be available.");
     }
 
     /// Allocates exact number of sound channels. Any channels that have id greater than or equal to `channels` will be stopped automatically.

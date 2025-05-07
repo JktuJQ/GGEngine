@@ -149,7 +149,7 @@ impl Transform {
     /// ]);  // rotation -> translation -> scaling
     /// ```
     ///
-    pub fn combine(transforms: impl Iterator<Item = Transform> + DoubleEndedIterator) -> Matrix3x3 {
+    pub fn combine(transforms: impl DoubleEndedIterator<Item = Transform>) -> Matrix3x3 {
         transforms
             .rev()
             .fold(Matrix3x3::identity(), |acc, transform| {

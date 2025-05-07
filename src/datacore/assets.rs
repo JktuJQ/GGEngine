@@ -38,7 +38,6 @@ impl<T: for<'a> Deserialize<'a>> FromFile for T {
             .map_err(|_| Error::new(ErrorKind::InvalidData, "Wrong data format"))
     }
 }
-
 /// [`ToFile`] trait is implemented on objects that can be saved to file (serialized).
 ///
 /// There is an auto implementation on all types that implement `serde::Serialized` and there is
@@ -70,59 +69,62 @@ impl<T: Serialize> ToFile for T {
     }
 }
 
-/// [`AssetFormat`] enum lists all kinds of data that `datacore` supports.
+/// [`AssetFormat`] trait registers types of assets by reserving a folder for them.
 ///
-/// That includes audio, image and font formats. `AssetFormat::Other` case is left for data that is
-/// native to `Rust` side (structs that are serialized via `serde`) or data that does not fit for other categories.
+/// `ggengine` provides few implementors, which are quite common.
+/// Implementation of [`AssetFormat`] on [`AudioAssetFormat`] means that
+/// `ggengine` will store data which is marked as audio in the folder with the name 'audio'.
 ///
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub enum AssetFormat {
-    /// Audio data.
+pub trait AssetFormat {
+    /// Name of folder in which assets of this format will be stored.
     ///
-    Audio,
-    /// Image data.
-    ///
-    Image,
-    /// Font data.
-    ///
-    Font,
-    /// `Rust`-side data.
-    ///
-    Other,
+    fn format_folder(&self) -> &'static str;
 }
-impl AssetFormat {
-    /// List of all [`AssetFormat`] variants.
-    ///
-    const FORMATS: [AssetFormat; 4] = [Self::Audio, Self::Image, Self::Font, Self::Other];
-
-    /// Converts format to corresponding name (name of directory in which those formats are stored).
-    ///
-    fn to_str(self) -> &'static str {
-        match self {
-            Self::Audio => "audio",
-            Self::Image => "images",
-            Self::Font => "fonts",
-            _ => "",
-        }
+/// [`AudioAssetFormat`] represents `ggengine`'s audio data.
+/// Its folder is 'audio'.
+///
+#[derive(Clone, Copy, Debug)]
+pub struct AudioAssetFormat;
+impl AssetFormat for AudioAssetFormat {
+    fn format_folder(&self) -> &'static str {
+        "audio"
     }
 }
-/// [`AssetMetadata`] struct represents metadata of any asset: it should have filename and specific format.
+/// [`ImageAssetFormat`] represents `ggengine`'s image data.
+/// Its folder is 'images'.
 ///
-#[derive(Clone, Debug)]
-pub struct AssetMetadata {
-    /// Name of a loaded asset file.
-    ///
-    pub filename: PathBuf,
-    /// Format of the asset.
-    ///
-    pub format: AssetFormat,
+#[derive(Debug, Clone, Copy)]
+pub struct ImageAssetFormat;
+impl AssetFormat for ImageAssetFormat {
+    fn format_folder(&self) -> &'static str {
+        "images"
+    }
+}
+/// [`FontAssetFormat`] represents `ggengine`'s font data.
+/// Its folder is 'fonts'.
+///
+#[derive(Debug, Clone, Copy)]
+pub struct FontAssetFormat;
+impl AssetFormat for FontAssetFormat {
+    fn format_folder(&self) -> &'static str {
+        "fonts"
+    }
+}
+/// [`ConfigAssetFormat`] represents config data.
+/// Its folder is 'configs'.
+///
+#[derive(Debug, Clone, Copy)]
+pub struct ConfigAssetFormat;
+impl AssetFormat for ConfigAssetFormat {
+    fn format_folder(&self) -> &'static str {
+        "configs"
+    }
 }
 
 /// [`AssetManager`] struct manages directory by converting it to (or treating it as) a nice storage for game assets.
 ///
-/// Initializing [`AssetManager`] in a directory automatically creates several new directories (if they are not present):
-/// 'audio/', 'images/' and 'fonts/'. Assets with corresponding `AssetFormat`s will be saved in those directories, while others are
+/// Initializing [`AssetManager`] in a directory creates several new directories (if they are not present):
+/// with corresponding `AssetFormat`s will be saved in those directories, while others are
 /// saved in root directory.
 ///
 /// [`AssetManager`] provides nice API by encapsulating filesystem work, and it should be used as a main
@@ -137,27 +139,34 @@ pub struct AssetManager {
 impl AssetManager {
     /// Constructs full path for asset using its metadata.
     ///
-    fn full_path(&self, data: AssetMetadata) -> PathBuf {
+    fn full_path(&self, filename: impl AsRef<Path>, format: impl AssetFormat) -> PathBuf {
         self.root_directory
             .as_path()
-            .join(data.format.to_str())
-            .join(data.filename)
+            .join(format.format_folder())
+            .join(filename)
     }
 
     /// Initializes [`AssetManager`] in a directory.
     ///
     /// ```rust, no_run
-    /// # use ggengine::datacore::assets::AssetManager;
-    /// let manager: AssetManager = AssetManager::initialize_at("assets")
-    ///     .expect("Filename should be correct");
+    /// # use ggengine::datacore::assets::{AssetManager, AssetFormat, AudioAssetFormat, ImageAssetFormat, FontAssetFormat, ConfigAssetFormat};
+    /// let manager: AssetManager = AssetManager::initialize_at(
+    ///     "assets",
+    ///     &[
+    ///         AudioAssetFormat.format_folder(),
+    ///         ImageAssetFormat.format_folder(),
+    ///         FontAssetFormat.format_folder(),
+    ///         ConfigAssetFormat.format_folder()
+    ///     ]
+    /// ).expect("Filename should be correct");
     /// ```
     ///
-    pub fn initialize_at(path: impl AsRef<Path>) -> Result<Self, Error> {
+    pub fn initialize_at(path: impl AsRef<Path>, formats: &[&'static str]) -> Result<Self, Error> {
         if !path.as_ref().is_dir() {
             create_dir_all(&path)?;
         }
-        for format in AssetFormat::FORMATS {
-            create_dir(path.as_ref().join(format.to_str()).as_path())?;
+        for format in formats {
+            create_dir(path.as_ref().join(format).as_path())?;
         }
 
         Ok(AssetManager {
@@ -168,36 +177,50 @@ impl AssetManager {
     /// Save asset using its metadata.
     ///
     /// ```rust, no_run
-    /// # use ggengine::datacore::assets::{AssetManager, AssetMetadata, AssetFormat};
+    /// # use ggengine::datacore::assets::{AssetManager, AssetFormat, ConfigAssetFormat};
     /// # use std::path::PathBuf;
-    /// let manager: AssetManager = AssetManager::initialize_at("assets")
-    ///     .expect("Filename should be correct");
+    /// let manager: AssetManager = AssetManager::initialize_at(
+    ///     "assets",
+    ///     &[ConfigAssetFormat.format_folder()]
+    /// ).expect("Filename should be correct");
     ///
     /// let asset: String = String::from("data");
-    /// manager.save_asset(AssetMetadata {
-    ///     filename: PathBuf::from("asset.data"),
-    ///     format: AssetFormat::Other,
-    /// }, &asset).expect("Metadata should be correct");
+    /// manager.save_asset(
+    ///     PathBuf::from("asset.data"),
+    ///     ConfigAssetFormat,
+    ///     &asset)
+    /// .expect("Metadata should be correct");
     /// ```
     ///
-    pub fn save_asset<T: ToFile>(&self, data: AssetMetadata, asset: &T) -> Result<(), Error> {
-        asset.to_file(self.full_path(data).as_path())
+    pub fn save_asset<T: ToFile>(
+        &self,
+        filename: impl AsRef<Path>,
+        format: impl AssetFormat,
+        asset: &T,
+    ) -> Result<(), Error> {
+        asset.to_file(self.full_path(filename, format).as_path())
     }
     /// Loads asset using its metadata.
     ///
     /// ```rust, no_run
-    /// # use ggengine::datacore::assets::{AssetManager, AssetMetadata, AssetFormat};
+    /// # use ggengine::datacore::assets::{AssetManager, AssetFormat, ConfigAssetFormat};
     /// # use std::path::PathBuf;
-    /// let manager: AssetManager = AssetManager::initialize_at("assets")
-    ///     .expect("Filename should be correct");
+    /// let manager: AssetManager = AssetManager::initialize_at(
+    ///     "assets",
+    ///     &[ConfigAssetFormat.format_folder()]
+    /// ).expect("Filename should be correct");
     ///
-    /// let asset: String = manager.load_asset(AssetMetadata {
-    ///     filename: PathBuf::from("asset.data"),
-    ///     format: AssetFormat::Other,
-    /// }).expect("Metadata should be correct");
+    /// let asset: String = manager.load_asset(
+    ///     PathBuf::from("asset.data"),
+    ///     ConfigAssetFormat,
+    /// ).expect("Metadata should be correct");
     /// ```
     ///
-    pub fn load_asset<T: FromFile>(&self, data: AssetMetadata) -> Result<T, Error> {
-        T::from_file(self.full_path(data).as_path())
+    pub fn load_asset<T: FromFile>(
+        &self,
+        filename: impl AsRef<Path>,
+        format: impl AssetFormat,
+    ) -> Result<T, Error> {
+        T::from_file(self.full_path(filename, format).as_path())
     }
 }

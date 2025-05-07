@@ -301,8 +301,8 @@ impl ImageArea {
     ///
     pub(crate) fn to_sdl_rect(self) -> Sdl2Rect {
         Sdl2Rect::new(
-            i32::try_from(self.left_upper.0).expect("Area width should not exceed `i32::MAX`"),
-            i32::try_from(self.left_upper.0).expect("Area height should not exceed `i32::MAX`"),
+            i32::try_from(self.left_upper.0).expect("Area width should not exceed `i32::MAX`."),
+            i32::try_from(self.left_upper.0).expect("Area height should not exceed `i32::MAX`."),
             self.width(),
             self.height(),
         )
@@ -428,7 +428,7 @@ impl<'a> Image<'a> {
         Self {
             filename: PathBuf::new(),
             surface: ImageSurface::new(width, height, format.to_sdl_pixel_format_enum())
-                .expect("All `PixelFormat` variants have valid representations in `sdl2`"),
+                .expect("All `PixelFormat` variants have valid representations in `sdl2`."),
         }
     }
     /// Initializes [`Image`] in given format from buffer which will be leaked to acquire static reference.
@@ -469,7 +469,7 @@ impl<'a> Image<'a> {
             surface: self
                 .surface
                 .convert_format(format.to_sdl_pixel_format_enum())
-                .expect("All conversions should not fail"),
+                .expect("All conversions should not fail."),
         }
     }
 
@@ -493,7 +493,7 @@ impl<'a> Image<'a> {
     /// # use ggengine::datacore::images::Image;
     /// # use ggengine::datacore::assets::FromFile;
     /// # use std::path::Path;
-    /// let image: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct");
+    /// let image: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct.");
     /// let (x, y): (u32, u32) = (100, 200);  // Accesses (100, 200) pixel
     /// println!("{}", image.access_data(|data|
     ///     data[image.pixel_offset(x, y)]) & 0b11
@@ -506,7 +506,7 @@ impl<'a> Image<'a> {
             false => f(self
                 .surface
                 .without_lock()
-                .expect("Surface should not be locked at this branch")),
+                .expect("Surface should not be locked at this branch.")),
         }
     }
     /// Applies function to inner data of image and returns result of this function.
@@ -524,7 +524,7 @@ impl<'a> Image<'a> {
     /// # use ggengine::datacore::assets::FromFile;
     /// # use std::path::Path;
     /// let mut image: Image = Image::from_file(Path::new("i.png"))
-    ///     .expect("Filename should be correct");
+    ///     .expect("Filename should be correct.");
     /// let (x, y): (u32, u32) = (100, 200);  // Accesses (100, 200) pixel
     /// let coord: usize = image.pixel_offset(x, y);
     /// println!("{:?}",
@@ -542,7 +542,7 @@ impl<'a> Image<'a> {
             false => f(self
                 .surface
                 .without_lock_mut()
-                .expect("Surface should not be locked at this branch")),
+                .expect("Surface should not be locked at this branch.")),
         }
     }
 
@@ -553,17 +553,17 @@ impl<'a> Image<'a> {
     /// # use ggengine::datacore::images::{ImageArea, Image};
     /// # use ggengine::datacore::assets::FromFile;
     /// # use std::path::Path;
-    /// let image1: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct");
+    /// let image1: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct.");
     /// let image2: Image = image1.crop(ImageArea::from(((50, 50), (100, 100))));
     /// ```
     ///
     pub fn crop(&self, area: ImageArea) -> Image {
         let mut result: ImageSurface = ImageSurface::new(area.width(), area.height(), self.surface.pixel_format_enum())
-            .expect("`ImageSystem::init` should be called before using anything else from `ggengine::datacore::image` submodule.");
+            .expect("`ImageSystem::init` should be called before using anything else from `ggengine::datacore::image` submodule..");
         let _ = self
             .surface
             .blit(Some(area.to_sdl_rect()), &mut result, None)
-            .expect("Cropping should be possible.");
+            .expect("Cropping should be possible..");
         Image {
             filename: PathBuf::new(),
             surface: result,
@@ -580,7 +580,7 @@ impl<'a> Image<'a> {
     /// # use ggengine::datacore::images::{ImageArea, Image, PixelFormat};
     /// # use ggengine::datacore::assets::FromFile;
     /// # use std::path::Path;
-    /// let source: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct");
+    /// let source: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct.");
     /// let mut destination: Image = Image::new(100, 100, PixelFormat::RGBA32);
     /// source.blit_to(Some(ImageArea::from(((50, 50), (100, 100)))), &mut destination, None);
     /// ```
@@ -602,7 +602,7 @@ impl<'a> Image<'a> {
                 &mut dst_image.surface,
                 dst_area.map(|area| area.to_sdl_rect()),
             )
-            .expect("Blitting should not fail");
+            .expect("Blitting should not fail.");
     }
     /// Blits part of another image on this image.
     ///
@@ -613,7 +613,7 @@ impl<'a> Image<'a> {
     /// # use ggengine::datacore::images::{ImageArea, Image, PixelFormat};
     /// # use ggengine::datacore::assets::FromFile;
     /// # use std::path::Path;
-    /// let source: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct");
+    /// let source: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct.");
     /// let mut destination: Image = Image::new(100, 100, PixelFormat::RGBA32);
     /// destination.blit_from(None, &source, Some(ImageArea::from(((50, 50), (100, 100)))));
     /// ```
@@ -663,7 +663,7 @@ impl<'a> Image<'a> {
         PixelFormat::from_sdl_pixel_format_enum(self.surface.pixel_format_enum())
     }
 }
-impl<'a> FromFile for Image<'a> {
+impl FromFile for Image<'_> {
     /// Initializes [`Image`] from given file.
     ///
     /// Only RGB-based formats are supported.
@@ -673,7 +673,7 @@ impl<'a> FromFile for Image<'a> {
     /// # use ggengine::datacore::images::Image;
     /// # use ggengine::datacore::assets::FromFile;
     /// # use std::path::Path;
-    /// let image: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct");
+    /// let image: Image = Image::from_file(Path::new("i.png")).expect("Filename should be correct.");
     /// ```
     ///
     fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
@@ -688,7 +688,7 @@ impl<'a> FromFile for Image<'a> {
         })
     }
 }
-impl<'a> ToFile for Image<'a> {
+impl ToFile for Image<'_> {
     /// Saves image to '*.png' file.
     ///
     /// # Example
@@ -696,7 +696,7 @@ impl<'a> ToFile for Image<'a> {
     /// # use ggengine::datacore::images::{Image, PixelFormat};
     /// # use ggengine::datacore::assets::ToFile;
     /// let image: Image = Image::new(100, 100, PixelFormat::RGBA32);
-    /// image.to_file("i.png").expect("Filename should be correct");
+    /// image.to_file("i.png").expect("Filename should be correct.");
     /// ```
     ///
     fn to_file(&self, filename: impl AsRef<Path>) -> Result<(), Error> {
@@ -705,7 +705,7 @@ impl<'a> ToFile for Image<'a> {
             .map_err(|message| Error::new(ErrorKind::InvalidData, message))
     }
 }
-impl<'a> fmt::Debug for Image<'a> {
+impl fmt::Debug for Image<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Image")
             .field("filename", &self.filename)
@@ -743,6 +743,7 @@ static IMAGE_CONTEXT: OnceLock<ImageContext> = OnceLock::new();
 pub enum ImageSystem {}
 impl ImageSystem {
     /// Initializes image system, prepares libraries for use and allows different formats to be opened.
+    /// If system is already initialized, does nothing; don't fear to 're-init' when in doubt.
     ///
     /// ### `ImageSystem::init` should be called before using anything else from `ggengine::datacore::image` submodule.
     ///
@@ -752,7 +753,7 @@ impl ImageSystem {
                 image_init(ImageInitFlag::from_bits(image_format.bits()).expect(
                     "`ImageFormat` constants are the same as in `InitFlag` bitflags struct",
                 ))
-                .expect("Image driver should be available"),
+                .expect("Image driver should be available."),
             );
     }
 }

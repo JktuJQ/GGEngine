@@ -18,11 +18,10 @@ use sdl2::ttf::{
     Hinting as TTFontHinting, PartialRendering as TTFPartialRendering,
     Sdl2TtfContext as TTFContext,
 };
-use std::path::PathBuf;
 use std::{
     fmt,
     io::{Error, ErrorKind},
-    path::Path,
+    path::{Path, PathBuf},
     sync::OnceLock,
 };
 
@@ -201,15 +200,15 @@ impl PartialFont {
     /// # use std::path::Path;
     /// FontSystem::init();
     /// let partial_font = PartialFont::from_file(Path::new("font.ttf"))
-    ///     .expect("Filename should be correct");
-    /// let font = partial_font.with_size(14).expect("FontSystem::init was called");
+    ///     .expect("Filename should be correct.");
+    /// let font = partial_font.with_size(14).expect("FontSystem::init was called.");
     /// ```
     ///
     pub fn with_size(&self, point_size: u16) -> Result<Font, Error> {
         Ok(Font {
             font: TTF_CONTEXT
                 .get()
-                .expect("`FontSystem::init` should be called before using anything else from `ggengine::datacore::fonts` submodule")
+                .expect("`FontSystem::init` should be called before using anything else from `ggengine::datacore::fonts` submodule.")
                 .load_font(&self.filename, point_size).map_err(|message| Error::new(ErrorKind::NotFound, message))?,
         })
     }
@@ -224,15 +223,15 @@ impl PartialFont {
     /// # use std::path::Path;
     /// FontSystem::init();
     /// let partial_font = PartialFont::from_file(Path::new("font.ttf"))
-    ///     .expect("Filename should be correct");
-    /// let font = partial_font.with_size_at_index(14, 0).expect("FontSystem::init was called");
+    ///     .expect("Filename should be correct.");
+    /// let font = partial_font.with_size_at_index(14, 0).expect("FontSystem::init was called.");
     /// ```
     ///
     pub fn with_size_at_index(&self, point_size: u16, index: u32) -> Result<Font, Error> {
         Ok(Font {
             font: TTF_CONTEXT
                 .get()
-                .expect("`FontSystem::init` should be called before using anything else from `ggengine::datacore::fonts` submodule")
+                .expect("`FontSystem::init` should be called before using anything else from `ggengine::datacore::fonts` submodule.")
                 .load_font_at_index(&self.filename, index, point_size).map_err(|message| Error::new(ErrorKind::NotFound, message))?,
         })
     }
@@ -262,10 +261,10 @@ impl fmt::Debug for PartialFont {
 /// # use ggengine::mathcore::Color;
 /// # use std::path::Path;
 /// FontSystem::init();
-/// let font: Font = PartialFont::from_file(Path::new("font.ttf")).expect("Filename should be correct")
-///     .with_size(14).expect("FontSystem::init was called");
+/// let font: Font = PartialFont::from_file(Path::new("font.ttf")).expect("Filename should be correct.")
+///     .with_size(14).expect("FontSystem::init was called.");
 /// font.show_text(FontShowMode::Solid { color: Color::BLACK }, "ggengine")
-///     .expect("Conversion should not fail");
+///     .expect("Conversion should not fail.");
 /// ```
 ///
 pub struct Font {
@@ -284,10 +283,10 @@ impl Font {
     /// # use std::path::Path;
     /// FontSystem::init();
     /// let font: Font = PartialFont::from_file(Path::new("font.ttf"))
-    ///     .expect("Filename should be correct")
-    ///     .with_size(14).expect("FontSystem::init was called");
+    ///     .expect("Filename should be correct.")
+    ///     .with_size(14).expect("FontSystem::init was called.");
     /// font.show_text(FontShowMode::Solid { color: Color::BLACK }, "ggengine")
-    ///     .expect("Conversion should not fail");
+    ///     .expect("Conversion should not fail.");
     /// ```
     ///
     pub fn show_text(&self, mode: FontShowMode, text: &str) -> Result<Image, Error> {
@@ -303,10 +302,10 @@ impl Font {
     /// # use std::path::Path;
     /// FontSystem::init();
     /// let font: Font = PartialFont::from_file(Path::new("font.ttf"))
-    ///     .expect("Filename should be correct")
-    ///     .with_size(14).expect("FontSystem::init was called");
+    ///     .expect("Filename should be correct.")
+    ///     .with_size(14).expect("FontSystem::init was called.");
     /// font.show_character(FontShowMode::Solid { color: Color::BLACK }, 'a')
-    ///     .expect("Conversion should not fail");
+    ///     .expect("Conversion should not fail.");
     /// ```
     ///
     pub fn show_character(&self, mode: FontShowMode, character: char) -> Result<Image, Error> {
@@ -322,11 +321,11 @@ impl Font {
     /// # use std::path::Path;
     /// FontSystem::init();
     /// let font: Font = PartialFont::from_file(Path::new("font.ttf"))
-    ///     .expect("Filename should be correct")
-    ///     .with_size(14).expect("FontSystem::init was called");
+    ///     .expect("Filename should be correct.")
+    ///     .with_size(14).expect("FontSystem::init was called.");
     /// font.show_latin1_text(FontShowMode::Solid { color: Color::BLACK },
     ///     &[0xC4, 0x70, 0x70, 0x6C, 0x65]
-    /// ).expect("Conversion should not fail");
+    /// ).expect("Conversion should not fail.");
     /// ```
     ///
     pub fn show_latin1_text(&self, mode: FontShowMode, latin1_text: &[u8]) -> Result<Image, Error> {
@@ -359,26 +358,17 @@ impl Font {
     /// Returns the width and height of the given UTF-8 text when rendered using this font.
     ///
     pub fn size_of_text(&self, text: &str) -> Option<(u32, u32)> {
-        match self.font.size_of(text) {
-            Ok(size) => Some(size),
-            Err(_) => None,
-        }
+        self.font.size_of(text).ok()
     }
     /// Returns the width and height of the given character when rendered using this font.
     ///
     pub fn size_of_char(&self, character: char) -> Option<(u32, u32)> {
-        match self.font.size_of_char(character) {
-            Ok(size) => Some(size),
-            Err(_) => None,
-        }
+        self.font.size_of_char(character).ok()
     }
     /// Returns the width and height of the given Latin-1 text in bytes when rendered using this font.
     ///
     pub fn size_of_latin1_text(&self, latin1_text: &[u8]) -> Option<(u32, u32)> {
-        match self.font.size_of_latin1(latin1_text) {
-            Ok(size) => Some(size),
-            Err(_) => None,
-        }
+        self.font.size_of_latin1(latin1_text).ok()
     }
 
     /// Returns this font's maximum total height.
@@ -451,7 +441,7 @@ impl Font {
     ///
     pub fn get_style(&self) -> FontStyle {
         FontStyle::from_bits(self.font.get_style().bits() as u32)
-            .expect("`FontStyle` constants are the same as in SDL `FontStyle` bitflags struct")
+            .expect("`FontStyle` constants are the same as in SDL `FontStyle` bitflags struct.")
     }
 
     /// Sets new hinting for this font.
@@ -485,6 +475,7 @@ static TTF_CONTEXT: OnceLock<TTFContext> = OnceLock::new();
 pub enum FontSystem {}
 impl FontSystem {
     /// Initializes truetype font system, prepares libraries for use and allows different formats to be opened.
+    /// If system is already initialized, does nothing; don't fear to 're-init' when in doubt.
     ///
     /// ### `FontSystem::init` should be called before using anything else from `ggengine::datacore::fonts` submodule.
     ///
@@ -492,6 +483,6 @@ impl FontSystem {
         if TTF_CONTEXT.get().is_some() {
             return;
         }
-        let _ = TTF_CONTEXT.set(ttf_init().expect("Font driver should be available"));
+        let _ = TTF_CONTEXT.set(ttf_init().expect("Font driver should be available."));
     }
 }

@@ -365,12 +365,16 @@ impl ResourceStorage {
     /// Gets a reference to the resource of the given type if present.
     ///
     pub(super) fn get_resource<R: Resource>(&self) -> Option<&R> {
-        self.resources.get(&ResourceId::of::<R>())?.downcast_to_ref::<R>()
+        self.resources
+            .get(&ResourceId::of::<R>())?
+            .downcast_to_ref::<R>()
     }
     /// Gets a mutable reference to the resource of the given type if present.
     ///
     pub(super) fn get_resource_mut<R: Resource>(&mut self) -> Option<&mut R> {
-        self.resources.get_mut(&ResourceId::of::<R>())?.downcast_to_mut::<R>()
+        self.resources
+            .get_mut(&ResourceId::of::<R>())?
+            .downcast_to_mut::<R>()
     }
 
     /// Gets a mutable reference to the resource of given type if present,
@@ -381,8 +385,7 @@ impl ResourceStorage {
         &mut self,
         f: impl FnOnce() -> R,
     ) -> &mut R {
-        self
-            .resources
+        self.resources
             .entry(ResourceId::of::<R>())
             .or_insert_with(|| Box::new(f()))
             .downcast_to_mut::<R>()
