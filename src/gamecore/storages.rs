@@ -5,7 +5,7 @@
 use crate::gamecore::{
     components::{
         BoxedComponent, BoxedResource, Bundle, BundledComponent, Component, ComponentId,
-        DowncastableBox, Resource, ResourceId,
+        Downcastable, Resource, ResourceId,
     },
     entities::{EntityId, EntityMut},
 };

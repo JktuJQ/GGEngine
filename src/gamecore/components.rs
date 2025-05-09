@@ -424,7 +424,7 @@ impl ResourceId {
 ///
 /// Ideally this functionality would be implemented with a bunch of independent functions,
 /// but that is impossible to do generically
-/// since `Box<T>` where `T: ?Sized` is not `Sized` itself, and thus cannot be casted to `Any`.
+/// since `Box<T>` where `T: ?Sized` is not `Sized` itself, and thus cannot be cast to `Any`.
 ///
 /// Concrete implementations of this trait on `dyn Component` and `dyn Resource`
 /// (which is all that is needed anyway) allow doing that conversion.
@@ -437,42 +437,42 @@ impl ResourceId {
 /// `ggengine` always uses this function in a context where conversion cannot fail and
 /// that makes this issue practically non-existent.
 ///
-pub(super) trait DowncastableBox {
-    /// Method that coerces `Box<impl AsAny>` to `T`.
+pub(super) trait Downcastable {
+    /// Method that coerces `Box<Self>` to `T`.
     ///
     fn downcast_to_value<T: Any>(self: Box<Self>) -> Result<T, Box<dyn Any>>;
-    /// Method that coerces `&Box<impl AsAny>` to `&T`.
+    /// Method that coerces `&Self` to `&T`.
     ///
-    fn downcast_to_ref<T: Any>(self: &Box<Self>) -> Option<&T>;
-    /// Method that coerces `&mut Box<impl AsAny>` to `&mut T`.
+    fn downcast_to_ref<T: Any>(&self) -> Option<&T>;
+    /// Method that coerces `&mut Self` to `&mut T`.
     ///
-    fn downcast_to_mut<T: Any>(self: &mut Box<Self>) -> Option<&mut T>;
+    fn downcast_to_mut<T: Any>(&mut self) -> Option<&mut T>;
 }
-impl DowncastableBox for dyn Component {
+impl Downcastable for dyn Component {
     fn downcast_to_value<T: Any>(self: Box<Self>) -> Result<T, Box<dyn Any>> {
         let as_any: Box<dyn Any> = self;
         as_any.downcast::<T>().map(|boxed| *boxed)
     }
-    fn downcast_to_ref<T: Any>(self: &Box<Self>) -> Option<&T> {
-        let as_any: &dyn Any = &**self;
+    fn downcast_to_ref<T: Any>(&self) -> Option<&T> {
+        let as_any: &dyn Any = self;
         as_any.downcast_ref::<T>()
     }
-    fn downcast_to_mut<T: Any>(self: &mut Box<Self>) -> Option<&mut T> {
-        let as_any: &mut dyn Any = &mut **self;
+    fn downcast_to_mut<T: Any>(&mut self) -> Option<&mut T> {
+        let as_any: &mut dyn Any = self;
         as_any.downcast_mut::<T>()
     }
 }
-impl DowncastableBox for dyn Resource {
+impl Downcastable for dyn Resource {
     fn downcast_to_value<T: Any>(self: Box<Self>) -> Result<T, Box<dyn Any>> {
         let as_any: Box<dyn Any> = self;
         as_any.downcast::<T>().map(|boxed| *boxed)
     }
-    fn downcast_to_ref<T: Any>(self: &Box<Self>) -> Option<&T> {
-        let as_any: &dyn Any = &**self;
+    fn downcast_to_ref<T: Any>(&self) -> Option<&T> {
+        let as_any: &dyn Any = self;
         as_any.downcast_ref::<T>()
     }
-    fn downcast_to_mut<T: Any>(self: &mut Box<Self>) -> Option<&mut T> {
-        let as_any: &mut dyn Any = &mut **self;
+    fn downcast_to_mut<T: Any>(&mut self) -> Option<&mut T> {
+        let as_any: &mut dyn Any = self;
         as_any.downcast_mut::<T>()
     }
 }
