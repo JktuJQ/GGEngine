@@ -22,7 +22,7 @@ use sdl2::{
     image::LoadTexture,
     render::{
         Texture as RenderTexture, TextureAccess as RenderTextureAccess,
-        TextureCreator as RenderTextureCreator, TextureQuery as RenderTextureQuery,
+        TextureCreator as RenderTextureCreator,
     },
     surface::SurfaceContext,
     video::WindowContext,
@@ -342,7 +342,7 @@ impl<'a> Texture<'a> {
     /// Returns size of texture in pixels (width and height).
     ///
     pub fn size(&self) -> (u32, u32) {
-        let query: RenderTextureQuery = self.texture.query();
+        let query = self.texture.query();
         (query.width, query.height)
     }
 

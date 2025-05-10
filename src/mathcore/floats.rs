@@ -28,8 +28,8 @@ pub fn almost_equal(a: f32, b: f32) -> bool {
         return true;
     }
 
-    let diff: f32 = (a - b).abs();
-    let norm: f32 = (a.abs() + b.abs()).min(f32::MAX);
+    let diff = (a - b).abs();
+    let norm = (a.abs() + b.abs()).min(f32::MAX);
     diff < (norm * EPSILON).max(f32::MIN)
 }
 
@@ -85,15 +85,15 @@ impl FloatOperations for f32 {
     /// ```
     ///
     fn correct_to(self, digits: i32) -> Self {
-        let mul: f32 = 10_f32.powi(digits);
+        let mul = 10_f32.powi(digits);
 
-        let n: f32 = self * mul;
+        let n = self * mul;
 
         if n == -0.0 {
             return 0.0;
         }
 
-        let fract: f32 = n.abs().fract();
+        let fract = n.abs().fract();
         if !(CLOSE_TO_ZERO..=CLOSE_TO_ONE).contains(&fract) {
             return n.round() / mul;
         }
@@ -114,7 +114,7 @@ impl FloatOperations for f32 {
     /// ```
     ///
     fn round_up_to(self, digits: i32) -> Self {
-        let mul: f32 = 10_f32.powi(digits);
+        let mul = 10_f32.powi(digits);
         (self * mul).round() / mul
     }
 }

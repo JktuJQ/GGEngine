@@ -50,9 +50,9 @@ impl GGEngine {
     /// ```
     ///
     pub fn init() -> GGEngine {
-        let sdl: Sdl = sdl_initialization()
+        let sdl = sdl_initialization()
             .expect("`ggengine` should be able to initialize underlying `sdl2` handler");
-        let video: SdlVideoSubsystem = sdl
+        let video = sdl
             .video()
             .expect("`ggengine` should be able to initialize underlying `video` handler");
         GGEngine { sdl, video }

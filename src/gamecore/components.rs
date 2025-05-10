@@ -151,6 +151,7 @@ impl BundledComponent {
 /// take_bundle(BundledIterator(vec![]));  // compiles
 /// ```
 ///
+#[derive(Copy, Clone, Debug)]
 pub struct BundledIterator<T>(pub T);
 /// [`Bundle`] trait defines a set of [`Component`]s.
 ///

@@ -331,7 +331,7 @@ impl SoundChannel {
     /// `None` is returned when channel id is incorrect (it exceeds `i32::MAX` or it exceeds the number of channels being allocated).
     ///
     pub fn from_id(id: u32) -> Option<Self> {
-        let id: i32 = match i32::try_from(id) {
+        let id = match i32::try_from(id) {
             Ok(value) => value,
             Err(_) => return None,
         };

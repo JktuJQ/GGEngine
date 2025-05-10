@@ -550,7 +550,7 @@ impl Color {
     /// Performs hue angle conversion into exact values of red, green and blue.
     ///
     fn rgb_from_hue(hue: Angle, x: f32, c: f32, m: f32) -> (u8, u8, u8) {
-        let (r, g, b): (f32, f32, f32) = if Angle::ZERO <= hue && hue < Angle::DEG60 {
+        let (r, g, b) = if Angle::ZERO <= hue && hue < Angle::DEG60 {
             (c, x, 0.0)
         } else if Angle::DEG60 <= hue && hue < Angle::DEG60 * 2.0 {
             (x, c, 0.0)
@@ -573,7 +573,7 @@ impl Color {
     ///
     fn hue_from_rgb(min: f32, max: f32, r: f32, g: f32, b: f32) -> (f32, Angle) {
         let d = max - min;
-        let h: Angle = if d != 0.0 {
+        let h = if d != 0.0 {
             if max == r {
                 Angle::DEG60 * (((g - b) / d) % 6.0)
             } else if max == g {
@@ -630,13 +630,13 @@ impl Color {
     /// ```
     ///
     pub fn from_hvsa(h: Angle, s: f32, v: f32, a: u8) -> Self {
-        let (s, v): (f32, f32) = (s.clamp(0.0, 1.0), v.clamp(0.0, 1.0));
+        let (s, v) = (s.clamp(0.0, 1.0), v.clamp(0.0, 1.0));
 
-        let c: f32 = s * v;
-        let x: f32 = c * (1.0 - ((h.degrees() / 60.0) % 2.0 - 1.0).abs());
-        let m: f32 = v - c;
+        let c = s * v;
+        let x = c * (1.0 - ((h.degrees() / 60.0) % 2.0 - 1.0).abs());
+        let m = v - c;
 
-        let (r, g, b): (u8, u8, u8) = Color::rgb_from_hue(h, x, c, m);
+        let (r, g, b) = Color::rgb_from_hue(h, x, c, m);
 
         Self { r, g, b, a }
     }
@@ -655,13 +655,13 @@ impl Color {
     /// ```
     ///
     pub fn from_hsla(h: Angle, s: f32, l: f32, a: u8) -> Self {
-        let (s, l): (f32, f32) = (s.clamp(0.0, 1.0), l.clamp(0.0, 1.0));
+        let (s, l) = (s.clamp(0.0, 1.0), l.clamp(0.0, 1.0));
 
-        let c: f32 = s * (1.0 - (2.0 * l - 1.0).abs());
-        let x: f32 = c * (1.0 - ((h.degrees() / 60.0) % 2.0 - 1.0).abs());
-        let m: f32 = l - c / 2.0;
+        let c = s * (1.0 - (2.0 * l - 1.0).abs());
+        let x = c * (1.0 - ((h.degrees() / 60.0) % 2.0 - 1.0).abs());
+        let m = l - c / 2.0;
 
-        let (r, g, b): (u8, u8, u8) = Color::rgb_from_hue(h, x, c, m);
+        let (r, g, b) = Color::rgb_from_hue(h, x, c, m);
 
         Self { r, g, b, a }
     }
@@ -705,14 +705,14 @@ impl Color {
     /// ```
     ///
     pub fn to_hsva(self) -> (Angle, f32, f32, u8) {
-        let (r, g, b): (f32, f32, f32) = (
+        let (r, g, b) = (
             f32::from(self.r) / 255.0,
             f32::from(self.g) / 255.0,
             f32::from(self.b) / 255.0,
         );
 
-        let (min, max): (f32, f32) = (r.min(g.min(b)), r.max(g.max(b)));
-        let (d, h): (f32, Angle) = Color::hue_from_rgb(min, max, r, g, b);
+        let (min, max) = (r.min(g.min(b)), r.max(g.max(b)));
+        let (d, h) = Color::hue_from_rgb(min, max, r, g, b);
         let (s, v) = (if max == 0.0 { 0.0 } else { d / max }, max);
 
         (h, s, v, self.a)
@@ -745,16 +745,16 @@ impl Color {
     /// ```
     ///
     pub fn to_hsla(self) -> (Angle, f32, f32, u8) {
-        let (r, g, b): (f32, f32, f32) = (
+        let (r, g, b) = (
             f32::from(self.r) / 255.0,
             f32::from(self.g) / 255.0,
             f32::from(self.b) / 255.0,
         );
 
-        let (min, max): (f32, f32) = (r.min(g.min(b)), r.max(g.max(b)));
-        let (d, h): (f32, Angle) = Color::hue_from_rgb(min, max, r, g, b);
-        let l: f32 = (max + min) / 2.0;
-        let s: f32 = if d == 0.0 {
+        let (min, max) = (r.min(g.min(b)), r.max(g.max(b)));
+        let (d, h) = Color::hue_from_rgb(min, max, r, g, b);
+        let l = (max + min) / 2.0;
+        let s = if d == 0.0 {
             0.0
         } else {
             d / (1.0 - (2.0 * l - 1.0).abs())

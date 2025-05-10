@@ -5,7 +5,6 @@
 use crate::mathcore::{
     floats::{almost_equal, FloatOperations},
     vectors::Vector2,
-    Sign,
 };
 use serde::{Deserialize, Serialize};
 use serde_big_array::Array;
@@ -70,7 +69,7 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
     /// ```
     ///
     pub fn as_array(&self) -> [[f32; COLUMNS]; ROWS] {
-        let mut arr: [[f32; COLUMNS]; ROWS] = [[0.0; COLUMNS]; ROWS];
+        let mut arr = [[0.0; COLUMNS]; ROWS];
         for (r, item) in self.arr.iter().enumerate().take(ROWS) {
             arr[r] = item.0;
         }
@@ -120,7 +119,7 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
     /// ```
     ///
     pub fn map(self, f: impl Fn(f32) -> f32) -> Matrix<ROWS, COLUMNS> {
-        let mut matrix: Matrix<ROWS, COLUMNS> = Matrix::zero();
+        let mut matrix = Matrix::zero();
         for r in 0..ROWS {
             for c in 0..COLUMNS {
                 matrix[r][c] = f(self[r][c]);
@@ -145,7 +144,7 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
         other: Matrix<ROWS, COLUMNS>,
         f: impl Fn(f32, f32) -> f32,
     ) -> Matrix<ROWS, COLUMNS> {
-        let mut matrix: Matrix<ROWS, COLUMNS> = Matrix::zero();
+        let mut matrix = Matrix::zero();
         for r in 0..ROWS {
             for c in 0..COLUMNS {
                 matrix[r][c] = f(self[r][c], other[r][c]);
@@ -177,7 +176,7 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
     /// ```
     ///
     pub fn transpose(&self) -> Matrix<COLUMNS, ROWS> {
-        let mut matrix: Matrix<COLUMNS, ROWS> = Matrix::zero();
+        let mut matrix = Matrix::zero();
         for r in 0..ROWS {
             for c in 0..COLUMNS {
                 matrix[c][r] = self[r][c];
@@ -186,45 +185,60 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
         matrix
     }
 
-    /// `internal_rref` operates with `Vec<Vec<f32>>`.
+    /// `internal_row_reduced_echelon_form` operates on `Vec<f32>` which represents two-dimensional array.
     ///
-    fn internal_rref(vec: Vec<Vec<f32>>) -> Vec<Vec<f32>> {
-        let mut matrix: Vec<Vec<f32>> = vec;
+    fn internal_row_reduced_echelon_form(
+        matrix: &mut Vec<f32>,
+        rows: usize,
+        columns: usize,
+    ) -> f32 {
         if matrix.is_empty() {
-            return matrix;
+            return 0.0;
         }
-        let (rows, columns): (usize, usize) = (matrix.len(), matrix[0].len());
 
-        if matrix[0][0] == 0.0 {
-            let mut row_i: usize = 0;
-            for (r, row) in matrix.iter().enumerate().take(rows) {
-                if row[0] > 0.0 {
+        let index = |r, c| c + r * columns;
+
+        if matrix[index(0, 0)] == 0.0 {
+            let mut row_i = 0;
+            for r in 0..rows {
+                if matrix[index(r, 0)] > 0.0 {
                     row_i = r;
                     break;
                 }
             }
             for c in 0..columns {
-                (matrix[row_i][c], matrix[0][c]) = (matrix[0][c], matrix[row_i][c]);
+                (matrix[index(row_i, c)], matrix[index(0, c)]) =
+                    (matrix[index(0, c)], matrix[index(row_i, c)]);
             }
         }
-        let mut lead: usize = 0;
-        while lead < rows {
+
+        let mut carry = 1.0;
+        for lead in 0..rows {
+            let leader = matrix[index(lead, lead)];
+            if leader == 0.0 {
+                carry = 0.0;
+                continue;
+            }
+
+            carry *= leader;
+            for c in 0..columns {
+                matrix[index(lead, c)] /= leader;
+            }
             for r in 0..rows {
-                let div: f32 = matrix[lead][lead];
-                let mult: f32 = matrix[r][lead] / div;
                 if r == lead {
-                    for c in 0..columns {
-                        matrix[lead][c] /= div;
-                    }
-                } else {
-                    for c in 0..columns {
-                        matrix[r][c] -= matrix[lead][c] * mult;
-                    }
+                    continue;
                 }
+
+                let k = matrix[index(r, lead)];
+                dbg!(r, lead, leader, matrix[index(r, lead)], k);
+                for c in 0..columns {
+                    dbg!(matrix[index(r, c)], matrix[index(lead, c)]);
+                    matrix[index(r, c)] -= matrix[index(lead, c)] * k;
+                }
+                dbg!(&matrix);
             }
-            lead += 1;
         }
-        matrix
+        carry
     }
 
     /// Returns reduced row echelon form of initial matrix.
@@ -239,7 +253,7 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
     ///     [2.0, 4.0, -3.0, 29.0]
     /// ]);
     /// assert_eq!(
-    ///     matrix.rref().correct_to(0).as_array(),
+    ///     matrix.row_reduced_echelon_form().correct_to(0).as_array(),
     ///     [
     ///         [1.0, 0.0, 0.0, 2.0],
     ///         [0.0, 1.0, 0.0, 4.0],
@@ -248,15 +262,18 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
     /// );
     /// ```
     ///
-    pub fn rref(&self) -> Matrix<ROWS, COLUMNS> {
-        let mut matrix: Matrix<ROWS, COLUMNS> = *self;
-        let mut m: Vec<Vec<f32>> = vec![vec![0.0; COLUMNS]; ROWS];
-        for (r, row) in m.iter_mut().enumerate().take(ROWS) {
-            row[..COLUMNS].copy_from_slice(&matrix[r][..COLUMNS]);
+    pub fn row_reduced_echelon_form(&self) -> Matrix<ROWS, COLUMNS> {
+        let mut m = vec![];
+        for row in self.arr.0 {
+            m.extend(row.0);
         }
-        m = Self::internal_rref(m);
-        for (r, row) in m.iter().enumerate().take(ROWS) {
-            matrix[r][..COLUMNS].copy_from_slice(&row[..COLUMNS]);
+        let _ = Self::internal_row_reduced_echelon_form(&mut m, ROWS, COLUMNS);
+
+        let mut matrix = Matrix::zero();
+        for r in 0..ROWS {
+            for c in 0..COLUMNS {
+                matrix[r][c] = m[c + r * COLUMNS];
+            }
         }
         matrix
     }
@@ -275,10 +292,10 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
         self,
         other: Matrix<COLUMNS, RHS_COLUMNS>,
     ) -> Matrix<ROWS, RHS_COLUMNS> {
-        let mut matrix: Matrix<ROWS, RHS_COLUMNS> = Matrix::zero();
+        let mut matrix = Matrix::zero();
         for r in 0..ROWS {
             for c in 0..RHS_COLUMNS {
-                let mut res: f32 = 0.0;
+                let mut res = 0.0;
                 for k in 0..COLUMNS {
                     res += self[r][k] * other[k][c];
                 }
@@ -289,64 +306,6 @@ impl<const ROWS: usize, const COLUMNS: usize> Matrix<ROWS, COLUMNS> {
     }
 }
 impl<const N: usize> Matrix<N, N> {
-    /// Returns tuple of echelon form of initial matrix and determinant sign.
-    ///
-    fn internal_echelon_form(&self) -> (Matrix<N, N>, Sign) {
-        if N == 0 {
-            return (*self, Sign::Zero);
-        }
-        let mut matrix: Matrix<N, N> = *self;
-        let mut sign: Sign = Sign::Positive;
-        let size: usize = N;
-        for r in 0..(size - 1) {
-            for c in ((r + 1)..size).rev() {
-                if matrix[c][r] == 0.0 {
-                    continue;
-                }
-                if matrix[c - 1][r] == 0.0 {
-                    for x in 0..size {
-                        let temp: f32 = matrix[c][x];
-                        matrix[c][x] = matrix[c - 1][x];
-                        matrix[c - 1][x] = temp;
-                    }
-                    sign = -sign;
-                    continue;
-                }
-                let req_ratio: f32 = matrix[c][r] / matrix[c - 1][r];
-                for k in 0..size {
-                    matrix[c][k] -= req_ratio * matrix[c - 1][k];
-                }
-            }
-        }
-        (matrix, sign)
-    }
-
-    /// Returns echelon form of initial matrix.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::mathcore::matrices::Matrix;
-    /// let matrix: Matrix<4, 4> = Matrix::from([
-    ///     [2.0, 3.0, 3.0, 1.0],
-    ///     [0.0, 4.0, 3.0, -3.0],
-    ///     [2.0, -1.0, -1.0, -3.0],
-    ///     [0.0, -4.0, -3.0, 2.0]
-    /// ]);
-    /// let ef: Matrix<4, 4> = matrix.echelon_form();
-    /// assert_eq!(ef.as_array(),
-    ///     [
-    ///         [2.0, 3.0, 3.0, 1.0],
-    ///         [0.0, -4.0, -4.0, -4.0],
-    ///         [0.0, 0.0, -1.0, -7.0],
-    ///         [0.0, 0.0, 0.0, -1.0]
-    ///     ]
-    /// );
-    /// ```
-    ///
-    pub fn echelon_form(&self) -> Matrix<N, N> {
-        self.internal_echelon_form().0
-    }
-
     /// Makes n-sized identity matrix.
     ///
     /// Constructs identity matrix (square matrix with 1.0 on main diagonal
@@ -367,7 +326,7 @@ impl<const N: usize> Matrix<N, N> {
     /// ```
     ///
     pub fn identity() -> Matrix<N, N> {
-        let mut matrix: Matrix<N, N> = Matrix::zero();
+        let mut matrix = Matrix::zero();
         for i in 0..N {
             matrix[i][i] = 1.0;
         }
@@ -404,12 +363,12 @@ impl<const N: usize> Matrix<N, N> {
         if N == 0 {
             return 0.0;
         }
-        let (ef, sign): (Matrix<N, N>, Sign) = self.internal_echelon_form();
-        let mut product: f32 = 1.0;
-        for i in 0..N {
-            product *= ef[i][i];
+        let mut m = vec![];
+        for row in self.arr.0 {
+            m.extend(row.0);
         }
-        product * f32::from(sign as i8)
+
+        Self::internal_row_reduced_echelon_form(&mut m, N, N)
     }
     /// Returns inverse of an initial matrix
     ///
@@ -446,20 +405,24 @@ impl<const N: usize> Matrix<N, N> {
     /// ```
     ///
     pub fn inverse(&self) -> Option<Matrix<N, N>> {
-        if self.determinant() == 0.0 {
+        let mut identity = Matrix::identity();
+
+        let mut m: Vec<f32> = vec![];
+        for r in 0..N {
+            m.extend(self.arr.0[r].0);
+            m.extend(identity.arr.0[r].0);
+        }
+
+        let carry = Self::internal_row_reduced_echelon_form(&mut m, N, N * 2);
+        if carry == 0.0 {
             return None;
         }
-        let (m, mut i): (Matrix<N, N>, Matrix<N, N>) = (*self, Matrix::identity());
-        let mut vec: Vec<Vec<f32>> = vec![vec![0.0; N * 2]; N];
-        for (r, row) in vec.iter_mut().enumerate().take(N) {
-            row[..N].copy_from_slice(&m[r][..N]);
-            row[N..(N + N)].copy_from_slice(&i[r][..N]);
+        for r in 0..N {
+            for c in 0..N {
+                identity[r][c] = m[(N + c) + r * (2 * N)]
+            }
         }
-        let rref: Vec<Vec<f32>> = Matrix::<N, N>::internal_rref(vec);
-        for (r, row) in rref.iter().enumerate().take(N) {
-            i[r][..N].copy_from_slice(&row[N..(N + N)]);
-        }
-        Some(i)
+        Some(identity)
     }
 }
 impl<const ROWS: usize, const COLUMNS: usize> FloatOperations for Matrix<ROWS, COLUMNS> {
@@ -673,7 +636,7 @@ impl<const ROWS: usize, const COLUMNS: usize> From<[[f32; COLUMNS]; ROWS]>
     /// Shorthand for writing `Matrix { arr: ... }`.
     ///
     fn from(arr: [[f32; COLUMNS]; ROWS]) -> Self {
-        let mut array: Array<Array<f32, COLUMNS>, ROWS> = Array([Array([0.0; COLUMNS]); ROWS]);
+        let mut array = Array([Array([0.0; COLUMNS]); ROWS]);
         for r in 0..ROWS {
             array[r] = Array(arr[r]);
         }
@@ -754,11 +717,11 @@ mod tests {
 
     #[test]
     fn matrix() {
-        let m1: Matrix<1, 3> = Matrix::from([[1.0, 2.0, 3.0]]);
+        let m1 = Matrix::from([[1.0, 2.0, 3.0]]);
         assert_eq!(m1[0][1], 2.0);
 
-        let m2: Matrix<1, 3> = Matrix::from([[3.0, 2.0, 1.0]]);
-        let mut m3: Matrix<1, 3> = m1;
+        let m2 = Matrix::from([[3.0, 2.0, 1.0]]);
+        let mut m3 = m1;
 
         assert_eq!((m1 + m2).as_array(), [[4.0; 3]]);
         assert_eq!((m1 - m2).as_array(), [[-2.0, 0.0, 2.0]]);

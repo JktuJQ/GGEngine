@@ -122,7 +122,7 @@ impl Vector2 {
     /// Returns new vector, which magnitude is clamped to max_magnitude.
     ///
     pub fn clamped_magnitude(self, max_magnitude: f32) -> Self {
-        let magnitude: f32 = self.magnitude();
+        let magnitude = self.magnitude();
         self * (magnitude.min(max_magnitude) / magnitude)
     }
 
@@ -131,7 +131,7 @@ impl Vector2 {
     /// t will be clamped between [0.0; 1.0].
     ///
     pub fn lerp(self, other: Self, t: f32) -> Self {
-        let t: f32 = t.clamp(0.0, 1.0);
+        let t = t.clamp(0.0, 1.0);
         self * t + other * (1.0 - t)
     }
 }

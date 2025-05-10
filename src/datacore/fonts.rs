@@ -89,7 +89,7 @@ impl FontShowMode {
         })
         .map(|surface| Image::from_sdl_surface(PathBuf::new(), surface))
         .map_err(|error| {
-            let message: String = match error {
+            let message = match error {
                 TTFontError::InvalidLatin1Text(_) => String::from("Invalid Latin-1 text"),
                 TTFontError::SdlError(message) => message,
             };

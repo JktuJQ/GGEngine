@@ -156,21 +156,21 @@ impl ColorModulatable for Image<'_> {
             .set_color_mod(SdlColor::from(color.to_rgba()))
     }
     fn color_modulation(&self) -> Color {
-        let (r, g, b, a): (u8, u8, u8, u8) = self.get_sdl_surface().color_mod().rgba();
+        let (r, g, b, a) = self.get_sdl_surface().color_mod().rgba();
         Color::from_rgba(r, g, b, a)
     }
 }
 impl ColorModulatable for Texture<'_> {
     fn set_color_modulation(&mut self, color: Color) {
-        let (r, g, b, a): (u8, u8, u8, u8) = color.to_rgba();
+        let (r, g, b, a) = color.to_rgba();
 
         let texture = self.get_sdl_texture_mut();
         texture.set_color_mod(r, g, b);
         texture.set_alpha_mod(a);
     }
     fn color_modulation(&self) -> Color {
-        let (r, g, b): (u8, u8, u8) = self.get_sdl_texture().color_mod();
-        let a: u8 = self.get_sdl_texture().alpha_mod();
+        let (r, g, b) = self.get_sdl_texture().color_mod();
+        let a = self.get_sdl_texture().alpha_mod();
         Color::from_rgba(r, g, b, a)
     }
 }

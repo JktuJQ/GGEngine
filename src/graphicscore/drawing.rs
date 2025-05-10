@@ -43,20 +43,18 @@ use crate::{
     mathcore::{
         shapes::{PolygonLike, Rect, Segment},
         transforms::{Rotatable, Scalable, Translatable},
-        vectors::{Point, Vector2},
-        {Color, Size},
+        vectors::Point,
+        Color,
     },
     utils::Window,
 };
 use sdl2::{
     rect::{FRect as SdlFRect, Rect as SdlRect},
     render::{
-        CanvasBuilder, SurfaceCanvas as RenderSurfaceCanvas, SurfaceCanvas,
-        Texture as RenderTexture, WindowCanvas as RenderWindowCanvas,
+        SurfaceCanvas as RenderSurfaceCanvas, SurfaceCanvas, WindowCanvas as RenderWindowCanvas,
     },
-    surface::Surface as SdlSurface,
 };
-use std::{fmt, path::PathBuf};
+use std::fmt;
 
 /// [`Canvas`] trait defines drawing methods that should be implemented on any canvas.
 ///
@@ -147,8 +145,8 @@ pub trait Canvas<'a>: Blendable {
     /// Points coordinates are truncated towards integers.
     ///
     fn draw_rect(&mut self, rect: Rect) {
-        let vertices: &[Point] = rect.vertices();
-        let length: usize = vertices.len();
+        let vertices = rect.vertices();
+        let length = vertices.len();
         for i in 1..=length {
             self.draw_segment(Segment {
                 point1: vertices[i - 1],
@@ -161,7 +159,7 @@ pub trait Canvas<'a>: Blendable {
     /// Points coordinates are truncated towards integers.
     ///
     fn draw_polygon(&mut self, polygon: &[Point]) {
-        let length: usize = polygon.len();
+        let length = polygon.len();
         for i in 1..=length {
             self.draw_segment(Segment {
                 point1: polygon[i - 1],
@@ -217,7 +215,7 @@ macro_rules! impl_canvas {
                 self.canvas.set_draw_color(color.to_rgba());
             }
             fn get_draw_color(&self) -> Color {
-                let (r, g, b, a): (u8, u8, u8, u8) = self.canvas.draw_color().rgba();
+                let (r, g, b, a) = self.canvas.draw_color().rgba();
                 Color::from_rgba(r, g, b, a)
             }
 
@@ -253,15 +251,15 @@ macro_rules! impl_canvas {
                         texture.get_sdl_texture(),
                         src_area.map(|rect| {
                             let [point1, point2] = rect.aabb();
-                            let (width, height): (u32, u32) = {
-                                let diff: Vector2 = point2 - point1;
+                            let (width, height) = {
+                                let diff = point2 - point1;
                                 (diff.x as u32, diff.y as u32)
                             };
                             SdlRect::new(point1.x as i32, point1.y as i32, width, height)
                         }),
                         dst_area.map(|rect| {
-                            let origin: Point = rect.origin();
-                            let size: (Size, Size) = rect.size();
+                            let origin = rect.origin();
+                            let size = rect.size();
                             SdlFRect::from_center((origin.x, origin.y), size.0.get(), size.1.get())
                         }),
                         dst_area.map_or(0.0, |rect| f64::from(rect.angle().degrees())),
@@ -345,8 +343,8 @@ impl WindowCanvas {
     /// ```
     ///
     pub fn from_window(window: Window, vsync: bool) -> Self {
-        let builder: CanvasBuilder = {
-            let builder: CanvasBuilder = window.destructure().into_canvas().target_texture();
+        let builder = {
+            let builder = window.destructure().into_canvas().target_texture();
             if vsync {
                 builder.present_vsync()
             } else {
@@ -414,10 +412,10 @@ impl WindowCanvas {
         image: Image<'image>,
         f: fn(&mut ImageCanvas) -> (),
     ) -> Image<'image> {
-        let (filename, surface): (PathBuf, SdlSurface<'image>) = image.destructure();
-        let canvas: SurfaceCanvas = SurfaceCanvas::from_surface(surface)
+        let (filename, surface) = image.destructure();
+        let canvas = SurfaceCanvas::from_surface(surface)
             .expect("`ggengine` should be able to initialize canvas from the image");
-        let mut image_canvas: ImageCanvas<'image> = ImageCanvas { canvas };
+        let mut image_canvas = ImageCanvas { canvas };
         f(&mut image_canvas);
         image_canvas.canvas.present();
         Image::from_sdl_surface(filename, image_canvas.canvas.into_surface())
@@ -578,11 +576,11 @@ impl WindowCanvas {
         if !self.supports_texture_management() {
             return;
         }
-        let textures: Vec<(&'managing mut RenderTexture<'texture>, &Index)> = textures
+        let textures = textures
             .iter_mut()
             .filter(|(_, texture)| texture.access_type() == AccessType::Targeted)
             .map(|(ref index, ref mut texture)| (texture.get_sdl_texture_mut(), index))
-            .collect();
+            .collect::<Vec<_>>();
         self.canvas
             .with_multiple_texture_canvas(textures.iter(), |canvas, index| {
                 f(&mut TextureCanvas { canvas }, *index)

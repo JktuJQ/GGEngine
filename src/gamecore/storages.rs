@@ -141,13 +141,13 @@ impl EntityComponentStorage {
         bundle: impl Bundle,
         entities_count_capacity: usize,
     ) -> EntityMut {
-        let entity_id: EntityId = match self.removed_entities.iter().next().copied() {
+        let entity_id = match self.removed_entities.iter().next().copied() {
             Some(id) => {
                 let _ = self.removed_entities.remove(&id);
                 id
             }
             None => {
-                let reserved_id: EntityId = EntityId(self.max_vacant_index);
+                let reserved_id = EntityId(self.max_vacant_index);
                 self.max_vacant_index += 1;
                 reserved_id
             }
@@ -175,15 +175,14 @@ impl EntityComponentStorage {
         bundled_component: BundledComponent,
         entities_count_capacity: usize,
     ) -> Option<BoxedComponent> {
-        let (component_id, boxed_component): (ComponentId, BoxedComponent) =
-            bundled_component.destructure();
+        let (component_id, boxed_component) = bundled_component.destructure();
 
-        let components: &mut Vec<Option<BoxedComponent>> = self
+        let components = self
             .table
             .entry(component_id)
             .or_insert(Vec::with_capacity(entities_count_capacity));
 
-        let entity_index: usize = entity_id.0;
+        let entity_index = entity_id.0;
         if components.len() <= entity_index {
             components.resize_with(
                 if entities_count_capacity == 0 {
@@ -221,10 +220,10 @@ impl EntityComponentStorage {
         &mut self,
         bundles: impl IntoIterator<Item = impl Bundle> + ExactSizeIterator,
     ) {
-        let adding: usize = bundles.len();
-        let resizing: usize = if adding >= self.removed_entities.len() {
-            let vacant: usize = self.removed_entities.len();
-            let reserved: usize = self.max_vacant_index - vacant;
+        let adding = bundles.len();
+        let resizing = if adding >= self.removed_entities.len() {
+            let vacant = self.removed_entities.len();
+            let reserved = self.max_vacant_index - vacant;
             reserved + (adding - vacant)
         } else {
             0
@@ -242,7 +241,7 @@ impl EntityComponentStorage {
         }
         let _ = self.removed_entities.insert(entity_id);
 
-        let entity_index: usize = entity_id.0;
+        let entity_index = entity_id.0;
         for components in self.table.values_mut() {
             if components.len() > entity_index {
                 components[entity_index] = None;
@@ -272,7 +271,7 @@ impl EntityComponentStorage {
     ///
     pub(super) fn insert_bundle(&mut self, entity_id: EntityId, bundle: impl Bundle) {
         for bundled_component in bundle.bundled_components() {
-            self.insert_bundled_component_with_capacity(entity_id, bundled_component, 0);
+            let _ = self.insert_bundled_component_with_capacity(entity_id, bundled_component, 0);
         }
     }
     /// Removes component from an entity and returns the old value if present.
@@ -422,9 +421,9 @@ mod tests {
     fn component_map() {
         use super::{ComponentId, ComponentMap};
 
-        let mut component_map: ComponentMap = ComponentMap::new();
+        let mut component_map = ComponentMap::new();
 
-        let component_id_u8: ComponentId = component_map.get_or_insert(TypeId::of::<u8>());
+        let component_id_u8 = component_map.get_or_insert(TypeId::of::<u8>());
         assert_eq!(
             component_map.get_or_insert(TypeId::of::<u8>()),
             component_id_u8
@@ -437,8 +436,8 @@ mod tests {
         assert!(component_map.is_empty());
         assert!(component_map.remove(&TypeId::of::<u8>()).is_none());
 
-        let component_id_i8: ComponentId = component_map.get_or_insert(TypeId::of::<i8>());
-        let component_id_u8: ComponentId = component_map.get_or_insert(TypeId::of::<u8>());
+        let component_id_i8 = component_map.get_or_insert(TypeId::of::<i8>());
+        let component_id_u8 = component_map.get_or_insert(TypeId::of::<u8>());
         assert_eq!(
             component_map.get_or_insert(TypeId::of::<u8>()),
             component_id_u8
@@ -450,7 +449,7 @@ mod tests {
 
         let _ = component_map.remove(&TypeId::of::<i8>());
 
-        let component_id_i8: ComponentId = component_map.get_or_insert(TypeId::of::<i8>());
+        let component_id_i8 = component_map.get_or_insert(TypeId::of::<i8>());
         assert_eq!(
             component_map.get_or_insert(TypeId::of::<i8>()),
             component_id_i8
@@ -466,9 +465,9 @@ mod tests {
     fn resource_map() {
         use super::{ResourceId, ResourceMap};
 
-        let mut resource_map: ResourceMap = ResourceMap::new();
+        let mut resource_map = ResourceMap::new();
 
-        let resource_id_u8: ResourceId = resource_map.get_or_insert(TypeId::of::<u8>());
+        let resource_id_u8 = resource_map.get_or_insert(TypeId::of::<u8>());
         assert_eq!(
             resource_map.get_or_insert(TypeId::of::<u8>()),
             resource_id_u8
@@ -481,8 +480,8 @@ mod tests {
         assert!(resource_map.is_empty());
         assert!(resource_map.remove(&TypeId::of::<u8>()).is_none());
 
-        let resource_id_i8: ResourceId = resource_map.get_or_insert(TypeId::of::<i8>());
-        let resource_id_u8: ResourceId = resource_map.get_or_insert(TypeId::of::<u8>());
+        let resource_id_i8 = resource_map.get_or_insert(TypeId::of::<i8>());
+        let resource_id_u8 = resource_map.get_or_insert(TypeId::of::<u8>());
         assert_eq!(
             resource_map.get_or_insert(TypeId::of::<u8>()),
             resource_id_u8
@@ -494,7 +493,7 @@ mod tests {
 
         let _ = resource_map.remove(&TypeId::of::<i8>());
 
-        let resource_id_i8: ResourceId = resource_map.get_or_insert(TypeId::of::<i8>());
+        let resource_id_i8 = resource_map.get_or_insert(TypeId::of::<i8>());
         assert_eq!(
             resource_map.get_or_insert(TypeId::of::<i8>()),
             resource_id_i8
@@ -511,15 +510,15 @@ mod tests {
         use super::{BoxedComponent, ComponentId, EntityComponentStorage, EntityId};
         use std::ops::Deref;
 
-        let entity_id0: EntityId = EntityId(0);
-        let entity_id1: EntityId = EntityId(1);
+        let entity_id0 = EntityId(0);
+        let entity_id1 = EntityId(1);
 
-        let component_id0: ComponentId = ComponentId(0);
-        const COMPONENT0: u8 = 0;
-        let component_id1: ComponentId = ComponentId(1);
-        const COMPONENT1: i8 = 0;
+        let component_id0 = ComponentId(0);
+        const COMPONENT0 = 0;
+        let component_id1 = ComponentId(1);
+        const COMPONENT1 = 0;
 
-        let mut component_table: EntityComponentStorage = EntityComponentStorage::new();
+        let mut component_table = EntityComponentStorage::new();
 
         assert!(component_table
             .get_entity_component(entity_id0, component_id0)
@@ -545,10 +544,10 @@ mod tests {
             .is_none());
 
         component_table.add_component_to_entity((component_id0, Box::new(COMPONENT0)), entity_id0);
-        let retrieval: &Option<BoxedComponent> = component_table
+        let retrieval = component_table
             .get_entity_component(entity_id0, component_id0)
             .expect("Component was added.");
-        let retrieved_component: &BoxedComponent =
+        let retrieved_component =
             retrieval.as_ref().expect("Component was added.");
         assert_eq!(
             retrieved_component
@@ -636,14 +635,14 @@ mod tests {
     fn resource_storage() {
         use super::ResourceStorage;
 
-        let mut resource_storage: ResourceStorage = ResourceStorage::new();
+        let mut resource_storage = ResourceStorage::new();
 
         let _ = resource_storage.insert_resource(0u8);
         let _ = resource_storage.insert_resource(0i8);
 
         assert!(resource_storage.contains_resource::<u8>());
         assert_eq!(resource_storage.insert_resource(1u8), Some(0u8));
-        let resource: &mut u8 = resource_storage
+        let resource = resource_storage
             .get_resource_mut::<u8>()
             .expect("`u8` resource was added");
 
@@ -660,7 +659,7 @@ mod tests {
         resource_storage.clear_resources();
         assert!(resource_storage.get_resource::<i8>().is_none());
 
-        let resource: &mut u8 = resource_storage.get_resource_or_insert_with(|| 0u8);
+        let resource = resource_storage.get_resource_or_insert_with(|| 0u8);
         *resource = 1u8;
         assert_eq!(*resource_storage.get_resource_or_insert_with(|| 5u8), 1u8);
         assert_eq!(

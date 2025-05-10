@@ -362,7 +362,7 @@ impl Window {
     /// Returns current position of the window.
     ///
     pub fn position(&self) -> Vector2Int {
-        let (x, y): (i32, i32) = self.window.position();
+        let (x, y) = self.window.position();
         Vector2Int { x, y }
     }
 

@@ -2,8 +2,8 @@
 //! game object that has some characteristics (components) on which game engine operates.
 //!
 
-use std::hash::{Hash, Hasher};
 use crate::gamecore::storages::EntityComponentStorage;
+use std::hash::{Hash, Hasher};
 
 /// [`EntityId`] id struct is needed to identify [`Entity`](super::entities::Entity)s
 /// in [`Scene`](super::scenes::Scene).

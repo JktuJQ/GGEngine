@@ -4,12 +4,15 @@
 
 use crate::mathcore::{
     shapes::{Convex, Segment, Shape},
-    vectors::{Point, Vector2, Vertex},
+    vectors::{Vector2, Vertex},
     Sign,
 };
 
 /// `CollisionSystem` trait defines systems that can detect collisions between two shapes and
 /// resolve collisions between them.
+///
+/// Methods take mutable access to allow special case,
+/// where collision existence depends on some external factors.
 ///
 pub trait CollisionSystem<S1: Shape, S2: Shape> {
     /// Returns whether two shapes collide or not.
@@ -35,9 +38,9 @@ impl SATSystem {
     /// Implements iterative algorithm of finding axis projection boundaries.
     ///
     fn axis_projection_boundaries(axis_projection: Vector2, vertices: &[Vertex]) -> (f32, f32) {
-        let (mut min, mut max): (f32, f32) = (f32::INFINITY, f32::NEG_INFINITY);
+        let (mut min, mut max) = (f32::INFINITY, f32::NEG_INFINITY);
         for vertex in vertices {
-            let q: f32 = axis_projection.dot_product(*vertex);
+            let q = axis_projection.dot_product(*vertex);
             (min, max) = (min.min(q), max.max(q));
         }
         (min, max)
@@ -53,15 +56,15 @@ impl<S1: Convex, S2: Convex> CollisionSystem<S1, S2> for SATSystem {
             }
 
             for edge in s1.edges() {
-                let axis_projection: Vector2 = Vector2 {
+                let axis_projection = Vector2 {
                     x: -(edge.point2.y - edge.point1.y),
                     y: edge.point2.x - edge.point1.x,
                 }
                 .normalized();
 
-                let (min1, max1): (f32, f32) =
+                let (min1, max1) =
                     SATSystem::axis_projection_boundaries(axis_projection, s1.vertices());
-                let (min2, max2): (f32, f32) =
+                let (min2, max2) =
                     SATSystem::axis_projection_boundaries(axis_projection, s2.vertices());
 
                 if !(max2 >= min1 && max1 >= min2) {
@@ -74,7 +77,7 @@ impl<S1: Convex, S2: Convex> CollisionSystem<S1, S2> for SATSystem {
     fn resolve(&mut self, shape1: &mut S1, shape2: &S2) {
         let (mut s1, mut s2): (&dyn Convex, &dyn Convex) = (shape1, shape2);
 
-        let mut overlap: f32 = f32::INFINITY;
+        let mut overlap = f32::INFINITY;
 
         for shape in 0..2 {
             if shape == 1 {
@@ -82,15 +85,15 @@ impl<S1: Convex, S2: Convex> CollisionSystem<S1, S2> for SATSystem {
             }
 
             for edge in s1.edges() {
-                let axis_projection: Vector2 = Vector2 {
+                let axis_projection = Vector2 {
                     x: -(edge.point2.y - edge.point1.y),
                     y: edge.point2.x - edge.point1.x,
                 }
                 .normalized();
 
-                let (min1, max1): (f32, f32) =
+                let (min1, max1) =
                     SATSystem::axis_projection_boundaries(axis_projection, s1.vertices());
-                let (min2, max2): (f32, f32) =
+                let (min2, max2) =
                     SATSystem::axis_projection_boundaries(axis_projection, s2.vertices());
 
                 overlap = overlap.min(max1.min(max2) - min1.max(min2));
@@ -101,7 +104,7 @@ impl<S1: Convex, S2: Convex> CollisionSystem<S1, S2> for SATSystem {
             }
         }
 
-        let d: Vector2 = (shape2.origin() - shape1.origin()).normalized();
+        let d = (shape2.origin() - shape1.origin()).normalized();
         shape1.translate_on(-(d * overlap));
     }
 }
@@ -130,9 +133,9 @@ impl<S1: Convex, S2: Convex> CollisionSystem<S1, S2> for DiagonalsSystem {
                 (s1, s2) = (s2, s1);
             }
 
-            let center: Point = s1.origin();
+            let center = s1.origin();
             for vertex in s1.vertices() {
-                let half_diagonal: Segment = Segment {
+                let half_diagonal = Segment {
                     point1: center,
                     point2: *vertex,
                 };
@@ -147,8 +150,8 @@ impl<S1: Convex, S2: Convex> CollisionSystem<S1, S2> for DiagonalsSystem {
     }
     fn resolve(&mut self, shape1: &mut S1, shape2: &S2) {
         let (mut s1, mut s2): (&dyn Convex, &dyn Convex) = (shape1, shape2);
-        let (mut center1, center2): (Point, Point) = (shape1.origin(), shape2.origin());
-        let mut sign: Sign = Sign::Negative;
+        let (mut center1, center2) = (shape1.origin(), shape2.origin());
+        let mut sign = Sign::Negative;
 
         for shape in 0..2 {
             if shape == 1 {
@@ -157,12 +160,12 @@ impl<S1: Convex, S2: Convex> CollisionSystem<S1, S2> for DiagonalsSystem {
             }
 
             for vertex in s1.vertices() {
-                let half_diagonal: Segment = Segment {
+                let half_diagonal = Segment {
                     point1: if shape == 0 { center1 } else { center2 },
                     point2: *vertex,
                 };
 
-                let mut displacement: Vector2 = Vector2::zero();
+                let mut displacement = Vector2::zero();
 
                 for edge in s2.edges() {
                     if let Some(intersection_point) = half_diagonal.intersection(edge) {
@@ -191,13 +194,13 @@ mod tests {
     fn sat_system() {
         use super::SATSystem;
 
-        let mut rect1: Rect = Rect::from_origin(
+        let mut rect1 = Rect::from_origin(
             Point { x: 0.0, y: 0.0 },
             Angle::default(),
             Size::try_from(2.0).expect("Value is in correct range."),
             Size::try_from(2.0).expect("Value is in correct range."),
         );
-        let rect2: Rect = Rect::from_origin(
+        let rect2 = Rect::from_origin(
             Point { x: 1.0, y: 0.0 },
             Angle::default(),
             Size::try_from(2.0).expect("Value is in correct range."),
@@ -220,13 +223,13 @@ mod tests {
     fn diagonals_system() {
         use super::DiagonalsSystem;
 
-        let mut rect1: Rect = Rect::from_origin(
+        let mut rect1 = Rect::from_origin(
             Point { x: 0.0, y: 0.0 },
             Angle::default(),
             Size::try_from(2.0).expect("Value is in correct range."),
             Size::try_from(1.0).expect("Value is in correct range."),
         );
-        let rect2: Rect = Rect::from_origin(
+        let rect2 = Rect::from_origin(
             Point { x: 1.0, y: 0.0 },
             Angle::default(),
             Size::try_from(2.0).expect("Value is in correct range."),

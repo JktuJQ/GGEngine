@@ -558,7 +558,7 @@ impl<'a> Image<'a> {
     /// ```
     ///
     pub fn crop(&self, area: ImageArea) -> Image {
-        let mut result: ImageSurface = ImageSurface::new(area.width(), area.height(), self.surface.pixel_format_enum())
+        let mut result = ImageSurface::new(area.width(), area.height(), self.surface.pixel_format_enum())
             .expect("`ImageSystem::init` should be called before using anything else from `ggengine::datacore::image` submodule..");
         let _ = self
             .surface
@@ -677,7 +677,7 @@ impl FromFile for Image<'_> {
     /// ```
     ///
     fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
-        let surface: ImageSurface = ImageSurface::from_file(path.as_ref())
+        let surface = ImageSurface::from_file(path.as_ref())
             .map_err(|message| Error::new(ErrorKind::NotFound, message))?;
         if PixelFormat::from_sdl_pixel_format_enum(surface.pixel_format_enum()).is_none() {
             return Err(Error::new(ErrorKind::InvalidData, "Wrong image format"));

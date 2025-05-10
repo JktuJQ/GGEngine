@@ -33,7 +33,7 @@ impl<T: for<'a> Deserialize<'a>> FromFile for T {
     /// This function returns an error if file does not exist or if data is not recoverable.
     ///
     fn from_file(filename: impl AsRef<Path>) -> Result<Self, Error> {
-        let file: File = File::open(filename)?;
+        let file = File::open(filename)?;
         serde_cbor::from_reader(file)
             .map_err(|_| Error::new(ErrorKind::InvalidData, "Wrong data format"))
     }
@@ -63,7 +63,7 @@ impl<T: Serialize> ToFile for T {
     /// serializable by CBOR.
     ///
     fn to_file(&self, filename: impl AsRef<Path>) -> Result<(), Error> {
-        let file: File = File::create(filename)?;
+        let file = File::create(filename)?;
         serde_cbor::to_writer(file, self)
             .map_err(|_| Error::new(ErrorKind::InvalidInput, "Wrong data format"))
     }

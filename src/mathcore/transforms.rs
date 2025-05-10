@@ -107,14 +107,14 @@ impl Transform {
     /// ```
     ///
     pub fn matrix(self) -> Matrix3x3 {
-        let mut matrix: Matrix3x3 = Matrix3x3::identity();
+        let mut matrix = Matrix3x3::identity();
         match self {
             Self::Translation { vector } => {
                 matrix[0][2] = vector.x;
                 matrix[1][2] = vector.y;
             }
             Self::Rotation { angle } => {
-                let (sin, cos): (f32, f32) = angle.sin_cos();
+                let (sin, cos) = angle.sin_cos();
                 matrix[0][0] = cos;
                 matrix[0][1] = -sin;
                 matrix[1][0] = sin;
@@ -208,7 +208,7 @@ pub trait Scalable {
     /// Sets object's size to given values.
     ///
     fn set_size(&mut self, size: (Size, Size)) {
-        let (x, y): (Size, Size) = self.size();
+        let (x, y) = self.size();
         self.scale((size.0 / x, size.1 / y));
     }
 }
