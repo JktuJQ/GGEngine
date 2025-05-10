@@ -2,6 +2,7 @@
 //! game object that has some characteristics (components) on which game engine operates.
 //!
 
+use std::hash::{Hash, Hasher};
 use crate::gamecore::storages::EntityComponentStorage;
 
 /// [`EntityId`] id struct is needed to identify [`Entity`](super::entities::Entity)s
@@ -10,19 +11,11 @@ use crate::gamecore::storages::EntityComponentStorage;
 /// It is assigned by the [`Scene`](super::scenes::Scene) in which
 /// this [`Entity`](super::entities::Entity) is registered.
 ///
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct EntityId(u64);
-impl EntityId {
-    /// Creates new [`EntityId`] from id.
-    ///
-    pub(super) fn new(id: u64) -> EntityId {
-        EntityId(id)
-    }
-
-    /// Returns id that corresponds to this [`EntityId`].
-    ///
-    pub(super) fn id(self) -> u64 {
-        self.0
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct EntityId(pub(super) usize);
+impl Hash for EntityId {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(self.0 as u64)
     }
 }
 

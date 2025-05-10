@@ -99,14 +99,14 @@ type IdMap<K, V> = HashMap<K, V, NoOpHasherState>;
 ///
 /// To see more on complexity topic, you can read docs for corresponding methods.
 ///
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(super) struct EntityComponentStorage {
-    /// Set of inserted entities.
+    /// Maximal index that is vacant for entity insertion.
     ///
-    inserted_entities: IdSet<EntityId>,
-    /// Vector of removed entities.
+    max_vacant_index: usize,
+    /// Set of removed entities.
     ///
-    removed_entities: Vec<EntityId>,
+    removed_entities: IdSet<EntityId>,
 
     /// Table that holds all components.
     ///
@@ -124,8 +124,8 @@ impl EntityComponentStorage {
     ///
     pub(super) fn new() -> Self {
         EntityComponentStorage {
-            inserted_entities: IdSet::with_hasher(NoOpHasherState),
-            removed_entities: Vec::new(),
+            max_vacant_index: 0,
+            removed_entities: IdSet::with_hasher(NoOpHasherState),
 
             table: IdMap::with_hasher(NoOpHasherState),
         }
@@ -141,11 +141,17 @@ impl EntityComponentStorage {
         bundle: impl Bundle,
         entities_count_capacity: usize,
     ) -> EntityMut {
-        let entity_id: EntityId = match self.removed_entities.pop() {
-            Some(id) => id,
-            None => EntityId::new(self.inserted_entities.len() as u64),
+        let entity_id: EntityId = match self.removed_entities.iter().next().copied() {
+            Some(id) => {
+                let _ = self.removed_entities.remove(&id);
+                id
+            }
+            None => {
+                let reserved_id: EntityId = EntityId(self.max_vacant_index);
+                self.max_vacant_index += 1;
+                reserved_id
+            }
         };
-        self.inserted_entities.insert(entity_id);
 
         for bundled_component in bundle.bundled_components() {
             let _ = self.insert_bundled_component_with_capacity(
@@ -169,7 +175,6 @@ impl EntityComponentStorage {
         bundled_component: BundledComponent,
         entities_count_capacity: usize,
     ) -> Option<BoxedComponent> {
-        let entity_index: usize = entity_id.id() as usize;
         let (component_id, boxed_component): (ComponentId, BoxedComponent) =
             bundled_component.destructure();
 
@@ -177,6 +182,8 @@ impl EntityComponentStorage {
             .table
             .entry(component_id)
             .or_insert(Vec::with_capacity(entities_count_capacity));
+
+        let entity_index: usize = entity_id.0;
         if components.len() <= entity_index {
             components.resize_with(
                 if entities_count_capacity == 0 {
@@ -214,28 +221,28 @@ impl EntityComponentStorage {
         &mut self,
         bundles: impl IntoIterator<Item = impl Bundle> + ExactSizeIterator,
     ) {
-        let added_count: usize = bundles.len();
-        let resizing_usize: usize = if added_count >= self.removed_entities.len() {
-            self.inserted_entities.len() + added_count - self.removed_entities.len()
+        let adding: usize = bundles.len();
+        let resizing: usize = if adding >= self.removed_entities.len() {
+            let vacant: usize = self.removed_entities.len();
+            let reserved: usize = self.max_vacant_index - vacant;
+            reserved + (adding - vacant)
         } else {
             0
         };
 
         for bundle in bundles {
-            let _ = self.insert_entity_with_capacity(bundle, resizing_usize);
+            let _ = self.insert_entity_with_capacity(bundle, resizing);
         }
     }
     /// Removes entity from [`EntityComponentStorage`] by removing all of its components.
     ///
     pub(super) fn remove_entity(&mut self, entity_id: EntityId) {
-        let was_present: bool = self.inserted_entities.remove(&entity_id);
-        if !was_present {
+        if self.removed_entities.contains(&entity_id) {
             return;
         }
+        let _ = self.removed_entities.insert(entity_id);
 
-        let entity_index: usize = entity_id.id() as usize;
-
-        self.removed_entities.push(entity_id);
+        let entity_index: usize = entity_id.0;
         for components in self.table.values_mut() {
             if components.len() > entity_index {
                 components[entity_index] = None;
@@ -273,7 +280,7 @@ impl EntityComponentStorage {
     pub(super) fn remove_component<C: Component>(&mut self, entity_id: EntityId) -> Option<C> {
         self.table
             .get_mut(&ComponentId::of::<C>())?
-            .get_mut(entity_id.id() as usize)?
+            .get_mut(entity_id.0)?
             .take()
             .map(|boxed_component| {
                 boxed_component
@@ -286,7 +293,7 @@ impl EntityComponentStorage {
     pub(super) fn get_component<C: Component>(&self, entity_id: EntityId) -> Option<&C> {
         self.table
             .get(&ComponentId::of::<C>())?
-            .get(entity_id.id() as usize)?
+            .get(entity_id.0)?
             .as_ref()?
             .downcast_to_ref::<C>()
     }
@@ -298,7 +305,7 @@ impl EntityComponentStorage {
     ) -> Option<&mut C> {
         self.table
             .get_mut(&ComponentId::of::<C>())?
-            .get_mut(entity_id.id() as usize)?
+            .get_mut(entity_id.0)?
             .as_mut()?
             .downcast_to_mut::<C>()
     }
