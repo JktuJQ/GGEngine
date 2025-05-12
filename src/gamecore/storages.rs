@@ -218,9 +218,13 @@ impl EntityComponentStorage {
     ///
     pub(super) fn insert_entities(
         &mut self,
-        bundles: impl IntoIterator<Item = impl Bundle> + ExactSizeIterator,
+        bundles: impl IntoIterator<
+            Item = impl Bundle,
+            IntoIter = impl ExactSizeIterator<Item = impl Bundle>,
+        >,
     ) {
-        let adding = bundles.len();
+        let bundles_iter = bundles.into_iter();
+        let adding = bundles_iter.len();
         let resizing = if adding >= self.removed_entities.len() {
             let vacant = self.removed_entities.len();
             let reserved = self.max_vacant_index - vacant;
@@ -229,7 +233,7 @@ impl EntityComponentStorage {
             0
         };
 
-        for bundle in bundles {
+        for bundle in bundles_iter {
             let _ = self.insert_entity_with_capacity(bundle, resizing);
         }
     }
@@ -287,6 +291,14 @@ impl EntityComponentStorage {
                     .expect("This type corresponds to this value.")
             })
     }
+    /// Returns whether this component is present in an entity or not.
+    ///
+    pub(super) fn contains_component<C: Component>(&self, entity_id: EntityId) -> bool {
+        self.table
+            .get(&ComponentId::of::<C>())
+            .and_then(|component_column| component_column.get(entity_id.0))
+            .is_some()
+    }
     /// Returns immutable reference to the component of given entity if present.
     ///
     pub(super) fn get_component<C: Component>(&self, entity_id: EntityId) -> Option<&C> {
@@ -308,13 +320,36 @@ impl EntityComponentStorage {
             .as_mut()?
             .downcast_to_mut::<C>()
     }
+    /// Gets a mutable reference to the component of given type if present,
+    /// otherwise inserts the component that is constructed by given closure and
+    /// returns mutable reference to it.
+    ///
+    pub(super) fn get_component_or_insert<C: Component>(
+        &mut self,
+        entity_id: EntityId,
+        f: impl FnOnce() -> C,
+    ) -> &mut C {
+        if !self.contains_component::<C>(entity_id) {
+            let _ = self.insert_bundled_component_with_capacity(
+                entity_id,
+                BundledComponent::bundle(f()),
+                0,
+            );
+        }
+        self.get_component_mut::<C>(entity_id)
+            .expect("Component was added if it was not already present.")
+    }
+
+    /// Clears storage, removing all data. Keeps the allocated memory.
+    ///
+    pub(super) fn clear(&mut self) {
+        self.max_vacant_index = 0;
+        self.removed_entities.clear();
+        self.table.clear();
+    }
 }
 
-/// [`ResourceStorage`] struct provides API for a storage of `Resource`s.
-///
-/// Commonly, you will use this struct through the `Scene` which has its own [`ResourceStorage`].
-/// `ggengine` still provides tools for manual constructions - you might want to use them to implement
-/// efficient application reload or other specialized scenarios.
+/// [`ResourceStorage`] struct provides API for a storage of [`Resource`]s.
 ///
 #[derive(Debug, Default)]
 pub(super) struct ResourceStorage {

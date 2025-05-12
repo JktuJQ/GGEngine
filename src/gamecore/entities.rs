@@ -2,14 +2,17 @@
 //! game object that has some characteristics (components) on which game engine operates.
 //!
 
-use crate::gamecore::storages::EntityComponentStorage;
+use crate::gamecore::{
+    components::{Bundle, Component},
+    storages::EntityComponentStorage,
+};
 use std::hash::{Hash, Hasher};
 
-/// [`EntityId`] id struct is needed to identify [`Entity`](super::entities::Entity)s
+/// [`EntityId`] id struct is needed to identify entities
 /// in [`Scene`](super::scenes::Scene).
 ///
 /// It is assigned by the [`Scene`](super::scenes::Scene) in which
-/// this [`Entity`](super::entities::Entity) is registered.
+/// this entity is registered.
 ///
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EntityId(pub(super) usize);
@@ -64,6 +67,7 @@ pub struct EntityMut<'a> {
 }
 impl<'a> EntityMut<'a> {
     /// Creates new [`EntityMut`], mutably borrowing [`EntityComponentStorage`].
+    ///
     pub(super) fn new(
         entity_id: EntityId,
         entity_component_storage: &'a mut EntityComponentStorage,
@@ -74,11 +78,43 @@ impl<'a> EntityMut<'a> {
         }
     }
 
+    pub fn despawn(self) {
+        self.entity_component_storage.remove_entity(self.entity_id);
+    }
+
     pub fn entity_id(&self) -> EntityId {
         self.entity_id
     }
 
-    pub fn despawn(self) {
-        self.entity_component_storage.remove_entity(self.entity_id);
+    pub fn insert<C: Component>(&mut self, component: C) -> Option<C> {
+        self.entity_component_storage
+            .insert_component::<C>(self.entity_id, component)
+    }
+    pub fn insert_bundle(&mut self, bundle: impl Bundle) {
+        self.entity_component_storage
+            .insert_bundle(self.entity_id, bundle)
+    }
+
+    pub fn remove<C: Component>(&mut self) -> Option<C> {
+        self.entity_component_storage
+            .remove_component::<C>(self.entity_id)
+    }
+
+    pub fn contains<C: Component>(&self) -> bool {
+        self.entity_component_storage
+            .contains_component::<C>(self.entity_id)
+    }
+
+    pub fn get<C: Component>(&self) -> Option<&C> {
+        self.entity_component_storage
+            .get_component::<C>(self.entity_id)
+    }
+    pub fn get_mut<C: Component>(&mut self) -> Option<&mut C> {
+        self.entity_component_storage
+            .get_component_mut::<C>(self.entity_id)
+    }
+    pub fn get_or_insert<C: Component>(&mut self, f: impl FnOnce() -> C) -> &mut C {
+        self.entity_component_storage
+            .get_component_or_insert::<C>(self.entity_id, f)
     }
 }
