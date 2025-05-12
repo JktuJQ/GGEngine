@@ -20,6 +20,12 @@ use std::{
 /// There is an auto implementation on all types that implement `serde::Deserialize` and there are also
 /// several manual implementations on data formats that are not deserializable by `serde` (audio, images and fonts).
 ///
+/// This trait should implement only 'trivial' initialization from file's data;
+/// complex behavior which might require additional args is not supported.
+/// `Texture` from `ggengine::graphicscore` is an example -
+/// although it could be initialized from file, it is supposed to be bound to `TextureCreator`,
+/// and so that this behavior is not implementable in terms of [`FromFile`] trait.
+///
 pub trait FromFile {
     /// Deserializes object from file.
     ///
@@ -40,13 +46,13 @@ impl<T: for<'a> Deserialize<'a>> FromFile for T {
 }
 /// [`ToFile`] trait is implemented on objects that can be saved to file (serialized).
 ///
-/// There is an auto implementation on all types that implement `serde::Serialized` and there is
+/// There is an auto implementation on all types that implement `serde::Serialize` and there is
 /// also manual implementation for `Image`.
 ///
 /// To hold up certain constraints, this trait is not implemented on types such as `Sound`, `Music` and `PartialFont`,
 /// because those are fully external to `ggengine` and `ggengine` cannot change them,
 /// so it's pointless to serialize data that can only be retrieved externally or
-/// to serialize objects that are initialized from data that is serializable.
+/// to serialize objects that are initialized from data that is serializable (if not for convenience).
 ///
 pub trait ToFile {
     /// Serializes object to file.

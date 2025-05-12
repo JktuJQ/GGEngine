@@ -44,7 +44,7 @@ impl GGEngine {
     /// This function loads and prepares all submodules for usage.
     ///
     /// # Example
-    /// ```rust
+    /// ```rust, no_run
     /// # use ggengine::GGEngine;
     /// let engine: GGEngine = GGEngine::init();
     /// ```

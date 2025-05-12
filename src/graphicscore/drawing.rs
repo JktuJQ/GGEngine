@@ -145,14 +145,7 @@ pub trait Canvas<'a>: Blendable {
     /// Points coordinates are truncated towards integers.
     ///
     fn draw_rect(&mut self, rect: Rect) {
-        let vertices = rect.vertices();
-        let length = vertices.len();
-        for i in 1..=length {
-            self.draw_segment(Segment {
-                point1: vertices[i - 1],
-                point2: vertices[i % length],
-            });
-        }
+        self.draw_polygon(rect.vertices())
     }
     /// Draws polygon on the canvas.
     ///
