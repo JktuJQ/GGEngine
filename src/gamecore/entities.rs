@@ -14,6 +14,11 @@ use std::hash::{Hash, Hasher};
 /// It is assigned by the [`Scene`](super::scenes::Scene) in which
 /// this entity is registered.
 ///
+/// # Note
+/// [`EntityId`] is only valid for the [`Scene`](super::scenes::Scene) it was obtained from,
+/// and although you can use it for any other scene,
+/// fetching will either fail or return unexpected results.
+///
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EntityId(pub(super) usize);
 impl Hash for EntityId {
@@ -79,10 +84,10 @@ impl<'a> EntityMut<'a> {
     }
 
     pub fn despawn(self) {
-        self.entity_component_storage.remove_entity(self.entity_id);
+        let _ = self.entity_component_storage.despawn_entity(self.entity_id);
     }
 
-    pub fn entity_id(&self) -> EntityId {
+    pub fn id(&self) -> EntityId {
         self.entity_id
     }
 
@@ -99,6 +104,10 @@ impl<'a> EntityMut<'a> {
         self.entity_component_storage
             .remove_component::<C>(self.entity_id)
     }
+    pub fn clear(&mut self) {
+        self.entity_component_storage
+            .remove_all_components(self.entity_id)
+    }
 
     pub fn contains<C: Component>(&self) -> bool {
         self.entity_component_storage
@@ -106,15 +115,14 @@ impl<'a> EntityMut<'a> {
     }
 
     pub fn get<C: Component>(&self) -> Option<&C> {
-        self.entity_component_storage
-            .get_component::<C>(self.entity_id)
+        self.entity_component_storage.component::<C>(self.entity_id)
     }
     pub fn get_mut<C: Component>(&mut self) -> Option<&mut C> {
         self.entity_component_storage
-            .get_component_mut::<C>(self.entity_id)
+            .component_mut::<C>(self.entity_id)
     }
-    pub fn get_or_insert<C: Component>(&mut self, f: impl FnOnce() -> C) -> &mut C {
+    pub fn get_or_insert_with<C: Component>(&mut self, f: impl FnOnce() -> C) -> &mut C {
         self.entity_component_storage
-            .get_component_or_insert::<C>(self.entity_id, f)
+            .component_get_or_insert_with::<C>(self.entity_id, f)
     }
 }

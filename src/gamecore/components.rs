@@ -42,7 +42,7 @@ use std::{
 /// struct Player;
 /// impl Component for Player {}
 ///
-/// struct Name(String);
+/// struct Name(&'static str);
 /// impl Component for Name {}
 ///
 /// struct Position {
@@ -112,6 +112,8 @@ impl ComponentId {
 /// This struct is most commonly used in [`Bundle`] implementations,
 /// because it ensures that the implementations could not mismatch type information.
 ///
+/// If you want to see some examples, check [`Bundle`] docs.
+///
 #[derive(Debug)]
 pub struct BundledComponent {
     /// Type metadata of component.
@@ -122,8 +124,23 @@ pub struct BundledComponent {
     boxed_component: BoxedComponent,
 }
 impl BundledComponent {
-    /// Constructs [`BundledComponent`] from [`Component`],
-    /// additionally recording necessary metadata.
+    /// Destructures [`BundledComponent`], returning type information of component and its boxed value.
+    ///
+    pub(super) fn destructure(self) -> (ComponentId, BoxedComponent) {
+        (self.component_id, self.boxed_component)
+    }
+
+    /// Constructs [`BundledComponent`] from [`Component`], additionally recording necessary metadata.
+    /// This constructor ensures, that recorded metadata in fact corresponds to boxed component.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::components::{Component, BundledComponent};
+    /// struct Player;
+    /// impl Component for Player {}
+    ///
+    /// let bundled_component: BundledComponent = BundledComponent::bundle(Player);
+    /// ```
     ///
     pub fn bundle<C: Component>(component: C) -> BundledComponent {
         BundledComponent {
@@ -132,11 +149,81 @@ impl BundledComponent {
         }
     }
 
-    /// Destructures [`BundledComponent`],
-    /// returning type information of component and its boxed value.
+    /// Returns whether bundled component is of given type or not.
+    /// This function can be used to determine possibility of conversion
+    /// in other [`BundledComponent`] functions.
     ///
-    pub(super) fn destructure(self) -> (ComponentId, BoxedComponent) {
-        (self.component_id, self.boxed_component)
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::components::{Component, BundledComponent};
+    /// struct Player;
+    /// impl Component for Player {}
+    ///
+    /// struct NPC;
+    /// impl Component for NPC {}
+    ///
+    /// let bundled_component: BundledComponent = BundledComponent::bundle(Player);
+    /// assert!(bundled_component.is::<Player>());
+    /// assert!(!bundled_component.is::<NPC>());
+    /// ```
+    ///
+    pub fn is<C: Component>(&self) -> bool {
+        self.component_id == ComponentId::of::<C>()
+    }
+    /// Extracts component from its bundled form, consuming [`BundledComponent`].
+    /// If given component type was incorrect, returns [`BundledComponent`] unchanged in `Err` clause.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::components::{Component, BundledComponent};
+    /// struct Player;
+    /// impl Component for Player {}
+    ///
+    /// let bundled_component: BundledComponent = BundledComponent::bundle(Player);
+    /// let player: Player = bundled_component.extract::<Player>().expect("`Player` type was wrapped");
+    /// ```
+    ///
+    pub fn extract<C: Component>(self) -> Result<C, BundledComponent> {
+        if self.is::<C>() {
+            Ok(self
+                .boxed_component
+                .downcast_to_value::<C>()
+                .expect("This value corresponds to this type."))
+        } else {
+            Err(self)
+        }
+    }
+    /// Allows accessing underlying component by reference.
+    /// If given component type was incorrect, `None` is returned.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::components::{Component, BundledComponent};
+    /// struct Player;
+    /// impl Component for Player {}
+    ///
+    /// let bundled_component: BundledComponent = BundledComponent::bundle(Player);
+    /// let player: &Player = bundled_component.as_ref::<Player>().expect("`Player` type was wrapped");
+    /// ```
+    ///
+    pub fn as_ref<C: Component>(&self) -> Option<&C> {
+        self.boxed_component.downcast_to_ref::<C>()
+    }
+    /// Allows accessing underlying component by reference.
+    /// If given component type was incorrect, `None` is returned.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::components::{Component, BundledComponent};
+    /// struct Player;
+    /// impl Component for Player {}
+    ///
+    /// let mut bundled_component: BundledComponent = BundledComponent::bundle(Player);
+    /// let player: &mut Player = bundled_component.as_mut::<Player>().expect("`Player` type was wrapped");
+    /// ```
+    ///
+    pub fn as_mut<C: Component>(&mut self) -> Option<&mut C> {
+        self.boxed_component.downcast_to_mut::<C>()
     }
 }
 /// [`BundledIterator`] is a wrapper that provides trivial implementation of [`Bundle`]
@@ -159,13 +246,12 @@ pub struct BundledIterator<T>(pub T);
 /// [`Bundle`] trait provides a way to create a set of [`Component`]s that are coupled
 /// by some logic, and it just makes sense to use those together.
 ///
-/// Bundles are only a convenient way to group components in a set, and they should
-/// not be used as units of behaviour. That is because multiple bundles could contain
-/// the same [`Component`] type, and adding both of them to one
-/// [`Entity`](super::entities::Entity) would lead to unexpected behaviour
-/// (see [`Component`] trait docs).
-/// For this reason it is impossible to use [`Bundle`] for querying. Instead, you should
-/// operate on [`Component`]s which define your game logic, querying those you need to use.
+/// Bundles are only a convenient way to initialize new entities,
+/// and they cannot be used to fetch or remove components from those.
+/// That is because [`Component`]s in entity are unique
+/// (you can't have two components of one type in one entity).
+/// As a result, removing one of intersecting bundles might invalidate the other one,
+/// which would be rather unexpected in a system that is operating on unremoved bundle.
 ///
 /// # Examples
 /// Every [`Component`] is a [`Bundle`], because component is basically a set (bundle) of one component.
@@ -182,7 +268,7 @@ pub struct BundledIterator<T>(pub T);
 /// impl Component for Player {}
 ///
 /// #[derive(Default)]
-/// struct Name(String);
+/// struct Name(&'static str);
 /// impl Component for Name {}
 ///
 /// #[derive(Default)]
@@ -204,7 +290,7 @@ pub struct BundledIterator<T>(pub T);
 /// # impl Component for Player {}
 /// #
 /// # #[derive(Default)]
-/// # struct Name(String);
+/// # struct Name(&'static str);
 /// # impl Component for Name {}
 /// #
 /// # #[derive(Default)]
@@ -230,7 +316,7 @@ pub struct BundledIterator<T>(pub T);
 /// # impl Component for Player {}
 /// #
 /// # #[derive(Default)]
-/// # struct Name(String);
+/// # struct Name(&'static str);
 /// # impl Component for Name {}
 /// #
 /// # #[derive(Default)]
@@ -243,17 +329,17 @@ pub struct BundledIterator<T>(pub T);
 /// type PlayerBundle = (Player, Name, Position);
 ///
 /// trait WithName {
-///     fn with_name(name: String) -> Self;
+///     fn with_name(name: &'static str) -> Self;
 /// }
 /// impl WithName for PlayerBundle {
-///     fn with_name(name: String) -> PlayerBundle {
+///     fn with_name(name: &'static str) -> PlayerBundle {
 ///         let mut result: PlayerBundle = PlayerBundle::default();
 ///         result.1 = Name(name);
 ///         result
 ///     }
 /// }
 ///
-/// let player: PlayerBundle = PlayerBundle::with_name("Player".to_string());
+/// let player: PlayerBundle = PlayerBundle::with_name("Player");
 /// ```
 ///
 /// 2. You can implement [`Bundle`] trait leveraging provided implementation to construct your own:
@@ -264,7 +350,7 @@ pub struct BundledIterator<T>(pub T);
 /// # impl Component for Player {}
 /// #
 /// # #[derive(Default)]
-/// # struct Name(String);
+/// # struct Name(&'static str);
 /// # impl Component for Name {}
 /// #
 /// # #[derive(Default)]
@@ -287,7 +373,7 @@ pub struct BundledIterator<T>(pub T);
 /// }
 ///
 /// let player: PlayerBundle = PlayerBundle {
-///     name: Name("Player".to_string()),
+///     name: Name("Player"),
 ///     ..Default::default()
 /// };
 /// ```

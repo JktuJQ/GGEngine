@@ -3,8 +3,7 @@
 //!
 
 // submodules and public re-exports
-mod storages;
-
 pub mod components;
 pub mod entities;
 pub mod scenes;
+pub mod storages;
