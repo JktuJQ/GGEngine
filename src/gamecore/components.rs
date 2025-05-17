@@ -180,10 +180,10 @@ impl BundledComponent {
     /// impl Component for Player {}
     ///
     /// let bundled_component: BundledComponent = BundledComponent::bundle(Player);
-    /// let player: Player = bundled_component.extract::<Player>().expect("`Player` type was wrapped");
+    /// let player: Player = bundled_component.take::<Player>().expect("`Player` type was wrapped");
     /// ```
     ///
-    pub fn extract<C: Component>(self) -> Result<C, BundledComponent> {
+    pub fn take<C: Component>(self) -> Result<C, BundledComponent> {
         if self.is::<C>() {
             Ok(self
                 .boxed_component

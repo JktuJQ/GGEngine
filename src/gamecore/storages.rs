@@ -291,6 +291,7 @@ impl EntityComponentStorage {
     /// impl Component for Player {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    ///
     /// let player: EntityId = storage.spawn_entity((Player,)).id();
     /// storage.despawn_entity(player);
     /// ```
@@ -320,8 +321,10 @@ impl EntityComponentStorage {
     /// impl Component for Player {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    ///
     /// let player: EntityId = storage.spawn_entity((Player,)).id();
     /// assert!(storage.contains_entity(player));
+    ///
     /// storage.despawn_entity(player);
     /// assert!(!storage.contains_entity(player));
     /// ```
@@ -336,6 +339,7 @@ impl EntityComponentStorage {
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::entities::{EntityId, EntityRef};
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    ///
     /// let player: EntityId = storage.spawn_entity(()).id();
     /// let player_ref: EntityRef = storage.entity(player).expect("Entity was spawned.");
     /// ```
@@ -354,6 +358,7 @@ impl EntityComponentStorage {
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::entities::{EntityId, EntityMut};
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    ///
     /// let player: EntityId = storage.spawn_entity(()).id();
     /// let player_mut: EntityMut = storage.entity_mut(player).expect("Entity was spawned.");
     /// ```
@@ -366,7 +371,7 @@ impl EntityComponentStorage {
         }
     }
 
-    /// Inserts component to given entity.
+    /// Inserts component into given entity and returns old value if present.
     ///
     /// # Example
     /// ```rust
@@ -377,6 +382,7 @@ impl EntityComponentStorage {
     /// impl Component for Player {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    ///
     /// let player: EntityId = storage.spawn_entity(()).id();
     /// storage.insert_component(player, Player);
     /// ```
@@ -397,7 +403,7 @@ impl EntityComponentStorage {
                 .expect("This type corresponds to this value.")
         })
     }
-    /// Inserts bundle of components to given entity.
+    /// Inserts bundle of components into given entity.
     ///
     /// # Example
     /// ```rust
@@ -411,6 +417,7 @@ impl EntityComponentStorage {
     /// impl Component for Health {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    ///
     /// let player: EntityId = storage.spawn_entity(()).id();
     /// storage.insert_bundle(player, (Player, Health(10)));
     /// ```
@@ -431,6 +438,7 @@ impl EntityComponentStorage {
     /// impl Component for Player {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    ///
     /// let player: EntityId = storage.spawn_entity((Player,)).id();
     /// storage.remove_component::<Player>(player);
     /// assert!(storage.contains_entity(player));
@@ -461,6 +469,7 @@ impl EntityComponentStorage {
     /// impl Component for Health {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    ///
     /// let player: EntityId = storage.spawn_entity((Player, Health(10))).id();
     /// storage.remove_all_components(player);
     /// assert!(storage.contains_entity(player));
@@ -485,8 +494,10 @@ impl EntityComponentStorage {
     /// impl Component for Player {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    ///
     /// let player: EntityId = storage.spawn_entity((Player,)).id();
     /// assert!(storage.contains_component::<Player>(player));
+    ///
     /// storage.remove_component::<Player>(player);
     /// assert!(!storage.contains_component::<Player>(player));
     /// ```
@@ -497,6 +508,38 @@ impl EntityComponentStorage {
             .and_then(|component_column| component_column.get(entity_id.0))
             .map(|component| component.is_some())
             .is_some_and(|present| present)
+    }
+    /// Extracts component from given entity and returns it if present.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
+    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::entities::EntityId;
+    /// struct Player;
+    /// impl Component for Player {}
+    ///
+    /// struct Health(u32);
+    /// impl Component for Health {}
+    ///
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    ///
+    /// let player: EntityId = storage.spawn_entity((Player, Health(10))).id();
+    /// let health: Health = storage.component_take::<Health>(player).expect("Component is present.");
+    /// assert_eq!(health.0, 10);
+    /// assert!(!storage.contains_component::<Health>(player));
+    /// ```
+    ///
+    pub fn component_take<C: Component>(&mut self, entity_id: EntityId) -> Option<C> {
+        self.table
+            .get_mut(&ComponentId::of::<C>())?
+            .get_mut(entity_id.0)?
+            .take()
+            .map(|component| {
+                component
+                    .downcast_to_value::<C>()
+                    .expect("This type corresponds to this value")
+            })
     }
     /// Returns immutable reference to the component of given entity if present.
     ///
@@ -512,18 +555,21 @@ impl EntityComponentStorage {
     /// impl Component for Health {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    ///
     /// let player: EntityId = storage.spawn_entity((Player, Health(10))).id();
     /// assert_eq!(storage.component::<Health>(player).expect("Component is present.").0, 10);
-    /// storage.remove_component::<Player>(player);
-    /// assert!(storage.component::<Player>(player).is_none());
     /// ```
     ///
     pub fn component<C: Component>(&self, entity_id: EntityId) -> Option<&C> {
         self.table
             .get(&ComponentId::of::<C>())?
             .get(entity_id.0)?
-            .as_ref()?
-            .downcast_to_ref::<C>()
+            .as_ref()
+            .map(|component_ref| {
+                component_ref
+                    .downcast_to_ref::<C>()
+                    .expect("This type corresponds to this value.")
+            })
     }
     /// Returns mutable reference to the component of given entity if present.
     ///
@@ -539,20 +585,22 @@ impl EntityComponentStorage {
     /// impl Component for Health {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    ///
     /// let player: EntityId = storage.spawn_entity((Player, Health(10))).id();
-    /// let health: &mut Health = storage.component_mut::<Health>(player).expect("Component is present.");
-    /// health.0 = 20;
+    /// storage.component_mut::<Health>(player).expect("Component is present.").0 = 20;
     /// assert_eq!(storage.component::<Health>(player).expect("Component is present").0, 20);
-    /// storage.remove_component::<Health>(player);
-    /// assert!(storage.component_mut::<Health>(player).is_none());
     /// ```
     ///
     pub fn component_mut<C: Component>(&mut self, entity_id: EntityId) -> Option<&mut C> {
         self.table
             .get_mut(&ComponentId::of::<C>())?
             .get_mut(entity_id.0)?
-            .as_mut()?
-            .downcast_to_mut::<C>()
+            .as_mut()
+            .map(|component_mut| {
+                component_mut
+                    .downcast_to_mut::<C>()
+                    .expect("This type corresponds to this value.")
+            })
     }
     /// Gets a mutable reference to the component of given type if present,
     /// otherwise inserts the component that is constructed by given closure and
@@ -570,6 +618,7 @@ impl EntityComponentStorage {
     /// impl Component for Health {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    ///
     /// let player: EntityId = storage.spawn_entity((Player,)).id();
     /// let _ = storage.component_get_or_insert_with(player, || Health(10));
     /// assert!(storage.contains_component::<Health>(player));
@@ -624,7 +673,6 @@ impl ResourceStorage {
             resources: IdMap::with_hasher(NoOpHasherState),
         }
     }
-
     /// Inserts a new resource with the given value.
     ///
     /// Resources are unique data of a given type.
@@ -639,6 +687,7 @@ impl ResourceStorage {
     /// impl Resource for Score {}
     ///
     /// let mut storage: ResourceStorage = ResourceStorage::new();
+    ///
     /// storage.insert_resource::<Score>(Score(0));
     /// ```
     ///
@@ -651,7 +700,6 @@ impl ResourceStorage {
                     .expect("This type corresponds to this value.")
             })
     }
-
     /// Removes the resource of a given type and returns it if present.
     /// Otherwise, returns `None`.
     ///
@@ -663,6 +711,7 @@ impl ResourceStorage {
     /// impl Resource for Score {}
     ///
     /// let mut storage: ResourceStorage = ResourceStorage::new();
+    ///
     /// storage.insert_resource::<Score>(Score(0));
     /// assert_eq!(storage.remove_resource::<Score>().expect("Resource was inserted.").0, 0);
     /// ```
@@ -676,7 +725,6 @@ impl ResourceStorage {
                     .expect("This type corresponds to this value.")
             })
     }
-
     /// Returns whether a resource of given type exists or not.
     ///
     /// # Example
@@ -688,8 +736,10 @@ impl ResourceStorage {
     ///
     /// let mut storage: ResourceStorage = ResourceStorage::new();
     /// assert!(!storage.contains_resource::<Score>());
+    ///
     /// storage.insert_resource::<Score>(Score(0));
     /// assert!(storage.contains_resource::<Score>());
+    ///
     /// storage.remove_resource::<Score>();
     /// assert!(!storage.contains_resource::<Score>());
     /// ```
@@ -697,7 +747,6 @@ impl ResourceStorage {
     pub fn contains_resource<R: Resource>(&mut self) -> bool {
         self.resources.contains_key(&ResourceId::of::<R>())
     }
-
     /// Gets a reference to the resource of the given type if present.
     ///
     /// # Example
@@ -709,14 +758,19 @@ impl ResourceStorage {
     ///
     /// let mut storage: ResourceStorage = ResourceStorage::new();
     /// assert!(storage.resource::<Score>().is_none());
+    ///
     /// storage.insert_resource::<Score>(Score(0));
     /// assert_eq!(storage.resource::<Score>().expect("Resource was inserted.").0, 0);
     /// ```
     ///
     pub fn resource<R: Resource>(&self) -> Option<&R> {
         self.resources
-            .get(&ResourceId::of::<R>())?
-            .downcast_to_ref::<R>()
+            .get(&ResourceId::of::<R>())
+            .map(|resource_ref| {
+                resource_ref
+                    .downcast_to_ref::<R>()
+                    .expect("This type corresponds to this value")
+            })
     }
     /// Gets a mutable reference to the resource of the given type if present.
     ///
@@ -729,6 +783,7 @@ impl ResourceStorage {
     ///
     /// let mut storage: ResourceStorage = ResourceStorage::new();
     /// assert!(storage.resource_mut::<Score>().is_none());
+    ///
     /// storage.insert_resource::<Score>(Score(0));
     /// storage.resource_mut::<Score>().expect("Resource was inserted.").0 = 10;
     /// assert_eq!(storage.resource::<Score>().expect("Resource was inserted.").0, 10);
@@ -736,10 +791,13 @@ impl ResourceStorage {
     ///
     pub fn resource_mut<R: Resource>(&mut self) -> Option<&mut R> {
         self.resources
-            .get_mut(&ResourceId::of::<R>())?
-            .downcast_to_mut::<R>()
+            .get_mut(&ResourceId::of::<R>())
+            .map(|resource_mut| {
+                resource_mut
+                    .downcast_to_mut::<R>()
+                    .expect("This type corresponds to this value")
+            })
     }
-
     /// Gets a mutable reference to the resource of given type if present,
     /// otherwise inserts the resource that is constructed by given closure and
     /// returns mutable reference to it.
@@ -753,6 +811,7 @@ impl ResourceStorage {
     ///
     /// let mut storage: ResourceStorage = ResourceStorage::new();
     /// assert!(!storage.contains_resource::<Score>());
+    ///
     /// let _ = storage.resource_get_or_insert_with(|| Score(10));
     /// assert!(storage.contains_resource::<Score>());
     /// ```
@@ -763,7 +822,6 @@ impl ResourceStorage {
             .downcast_to_mut::<R>()
             .expect("This type corresponds to this value.")
     }
-
     /// Clears storage, removing all data. Keeps the allocated memory.
     ///
     pub fn clear(&mut self) {
