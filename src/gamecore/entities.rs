@@ -132,7 +132,7 @@ impl<'a> From<EntityMut<'a>> for EntityRef<'a> {
 ///
 /// This struct provides ergonomic access to [`EntityComponentStorage`] API,
 /// and `ggengine` advises using [`EntityMut`] instead of using bare [`EntityComponentStorage`].
-/// 
+///
 #[derive(Debug)]
 pub struct EntityMut<'a> {
     /// Entity id.
