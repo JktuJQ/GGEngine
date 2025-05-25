@@ -7,7 +7,8 @@
 use std::{
     any::{type_name, Any, TypeId},
     fmt,
-    iter::{empty, once},
+    mem::swap,
+    array::from_fn
 };
 
 /// [`Component`] trait defines objects that are components by ECS terminology.
@@ -72,7 +73,33 @@ use std::{
 pub trait Component: Any {}
 impl fmt::Debug for dyn Component {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "dyn Component ({:?})", type_name::<Self>())
+        write!(f, "{:?}", type_name::<Self>())
+    }
+}
+/// [`ComponentId`] id struct is needed to identify [`Component`]s in [`Scene`](super::scenes::Scene).
+///
+/// It is assigned by the [`Scene`](super::scenes::Scene) in
+/// which entity with this [`Component`] is registered.
+///
+/// # Usage
+/// Usage of this struct is fairly advanced.
+/// Most of the time you should use convenient statically typed API,
+/// which is provided by [`Scene`](super::scenes::Scene).
+///
+/// Storages operate on ids, which allows them to provide more flexible interface.
+/// You can also try to trick type system by providing data that does not correspond to Rust type
+/// through id of existing 'fake' type.
+///
+/// That said, you should use typed API that `ggengine` exposes through several structs,
+/// not the API of `ggengine::storages` (unless absolutely needed).
+///
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ComponentId(TypeId);
+impl ComponentId {
+    /// Returns [`ComponentId`] of given [`Component`] type.
+    ///
+    pub fn of<C: Component>() -> Self {
+        ComponentId(TypeId::of::<C>())
     }
 }
 /// Type alias for `Box<dyn Component>`.
@@ -84,170 +111,14 @@ impl fmt::Debug for dyn Component {
 /// (`Vec`, iterator, etc.).
 ///
 pub type BoxedComponent = Box<dyn Component>;
-/// [`ComponentId`] id struct is needed to identify [`Component`]s in [`Scene`](super::scenes::Scene).
-///
-/// It is assigned by the [`Scene`](super::scenes::Scene) in
-/// which entity with this [`Component`] is registered.
-///
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(super) struct ComponentId(TypeId);
-impl ComponentId {
-    /// Returns [`ComponentId`] of given [`Component`] type.
-    ///
-    pub(super) fn of<C: Component>() -> Self {
-        ComponentId(TypeId::of::<C>())
-    }
-}
 
-/// [`BundledComponent`] represents component with its type metadata.
-///
-/// `ggengine` uses dynamic dispatch to implement ECS architecture,
-/// and so, it needs information about types.
-/// [`BoxedComponent`] allows erasing type to restore it later,
-/// but without type hint that will be impossible.
-/// [`BundledComponent`] solves that problem - constructing this struct
-/// automatically records necessary metadata.
-///
-/// # Usage
-/// This struct is most commonly used in [`Bundle`] implementations,
-/// because it ensures that the implementations could not mismatch type information.
-///
-/// If you want to see some examples, check [`Bundle`] docs.
-///
-#[derive(Debug)]
-pub struct BundledComponent {
-    /// Type metadata of component.
-    ///
-    component_id: ComponentId,
-    /// Boxed component.
-    ///
-    boxed_component: BoxedComponent,
-}
-impl BundledComponent {
-    /// Destructures [`BundledComponent`], returning type information of component and its boxed value.
-    ///
-    pub(super) fn destructure(self) -> (ComponentId, BoxedComponent) {
-        (self.component_id, self.boxed_component)
-    }
-
-    /// Constructs [`BundledComponent`] from [`Component`], additionally recording necessary metadata.
-    /// This constructor ensures, that recorded metadata in fact corresponds to boxed component.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::gamecore::components::{Component, BundledComponent};
-    /// struct Player;
-    /// impl Component for Player {}
-    ///
-    /// let bundled_component: BundledComponent = BundledComponent::bundle(Player);
-    /// ```
-    ///
-    pub fn bundle<C: Component>(component: C) -> BundledComponent {
-        BundledComponent {
-            component_id: ComponentId::of::<C>(),
-            boxed_component: Box::new(component),
-        }
-    }
-
-    /// Returns whether bundled component is of given type or not.
-    /// This function can be used to determine possibility of conversion
-    /// in other [`BundledComponent`] functions.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::gamecore::components::{Component, BundledComponent};
-    /// struct Player;
-    /// impl Component for Player {}
-    ///
-    /// struct NPC;
-    /// impl Component for NPC {}
-    ///
-    /// let bundled_component: BundledComponent = BundledComponent::bundle(Player);
-    /// assert!(bundled_component.is::<Player>());
-    /// assert!(!bundled_component.is::<NPC>());
-    /// ```
-    ///
-    pub fn is<C: Component>(&self) -> bool {
-        self.component_id == ComponentId::of::<C>()
-    }
-    /// Extracts component from its bundled form, consuming [`BundledComponent`].
-    /// If given component type was incorrect, returns [`BundledComponent`] unchanged in `Err` clause.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::gamecore::components::{Component, BundledComponent};
-    /// struct Player;
-    /// impl Component for Player {}
-    ///
-    /// let bundled_component: BundledComponent = BundledComponent::bundle(Player);
-    /// let player: Player = bundled_component.take::<Player>().expect("`Player` type was wrapped");
-    /// ```
-    ///
-    pub fn take<C: Component>(self) -> Result<C, BundledComponent> {
-        if self.is::<C>() {
-            Ok(self
-                .boxed_component
-                .downcast_to_value::<C>()
-                .expect("This value corresponds to this type."))
-        } else {
-            Err(self)
-        }
-    }
-    /// Allows accessing underlying component by reference.
-    /// If given component type was incorrect, `None` is returned.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::gamecore::components::{Component, BundledComponent};
-    /// struct Player;
-    /// impl Component for Player {}
-    ///
-    /// let bundled_component: BundledComponent = BundledComponent::bundle(Player);
-    /// let player: &Player = bundled_component.as_ref::<Player>().expect("`Player` type was wrapped");
-    /// ```
-    ///
-    pub fn as_ref<C: Component>(&self) -> Option<&C> {
-        self.boxed_component.downcast_to_ref::<C>()
-    }
-    /// Allows accessing underlying component by reference.
-    /// If given component type was incorrect, `None` is returned.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::gamecore::components::{Component, BundledComponent};
-    /// struct Player;
-    /// impl Component for Player {}
-    ///
-    /// let mut bundled_component: BundledComponent = BundledComponent::bundle(Player);
-    /// let player: &mut Player = bundled_component.as_mut::<Player>().expect("`Player` type was wrapped");
-    /// ```
-    ///
-    pub fn as_mut<C: Component>(&mut self) -> Option<&mut C> {
-        self.boxed_component.downcast_to_mut::<C>()
-    }
-}
-/// [`BundledIterator`] is a wrapper that provides trivial implementation of [`Bundle`]
-/// for anything that implements `IntoIterator<Item = BundledComponent>`.
-/// This struct does not provide any other functionality.
-///
-/// # Example
-/// ```rust
-/// # use ggengine::gamecore::components::{BundledIterator, Bundle};
-/// fn take_bundle(bundle: impl Bundle) {}
-///
-/// take_bundle(BundledIterator(vec![]));  // compiles
-/// ```
-///
-#[derive(Copy, Clone, Debug)]
-pub struct BundledIterator<T>(pub T);
-/// [`Bundle`] trait defines a set of [`Component`]s.
+/// [`Bundle`] trait defines a static set of [`Component`]s.
 ///
 /// In ECS, components define objects and systems operate on combinations of components.
 /// [`Bundle`] trait provides a way to create a set of [`Component`]s that are coupled
 /// by some logic, and it just makes sense to use those together.
 ///
-/// Bundles are only a convenient way to initialize new entities,
-/// and they cannot be used to fetch or remove components from those.
+/// Bundles are only a convenient way to initialize new entities and they cannot be used to fetch from those.
 /// That is because [`Component`]s in entity are unique
 /// (you can't have two components of one type in one entity).
 /// As a result, removing one of intersecting bundles might invalidate the other one,
@@ -255,8 +126,8 @@ pub struct BundledIterator<T>(pub T);
 ///
 /// # Examples
 /// Every [`Component`] is a [`Bundle`], because component is basically a set (bundle) of one component.
-/// Additionally, tuples of bundles are also [`Bundle`] (with up to 12 items,
-/// but those tuples can be nested, which practically removes that bound).
+/// Additionally, tuples of bundles are also [`Bundle`]
+/// (with up to 12 items; if you need more, consider implementing your own [`Bundle`]).
 /// This allows you to combine the necessary components into a [`Bundle`].
 ///
 /// For example defining a `PlayerBundle` containing components that describe the player
@@ -342,9 +213,9 @@ pub struct BundledIterator<T>(pub T);
 /// let player: PlayerBundle = PlayerBundle::with_name("Player");
 /// ```
 ///
-/// 2. You can implement [`Bundle`] trait leveraging provided implementation to construct your own:
+/// 2. You can leverage provided implementation to construct your own:
 /// ```rust
-/// # use ggengine::gamecore::components::{Bundle, Component, BundledComponent};
+/// # use ggengine::gamecore::components::{Bundle, Component, ComponentId, BoxedComponent};
 /// # #[derive(Default)]
 /// # struct Player;
 /// # impl Component for Player {}
@@ -367,8 +238,11 @@ pub struct BundledIterator<T>(pub T);
 ///     position: Position,
 /// }
 /// impl Bundle for PlayerBundle {
-///     fn bundled_components(self) -> impl IntoIterator<Item = BundledComponent> {
-///         (self.player, self.name, self.position).bundled_components()
+///     fn component_ids() -> [ComponentId; {
+///         <(Player, Name, Position)>::component_ids()
+///     }
+///     fn boxed_components(self) -> [BoxedComponent; {
+///         (self.player, self.name, self.position).boxed_components()
 ///     }
 /// }
 ///
@@ -380,76 +254,104 @@ pub struct BundledIterator<T>(pub T);
 /// That approach allows to free yourself from all restrictions,
 /// and just 'pack a bundle' at the very end.
 ///
-/// 3. You can manually implement [`Bundle`] trait by using [`BundledComponent`]:
+/// 3. You can manually implement [`Bundle`] trait:
 /// ```rust
-/// # use ggengine::gamecore::components::{Bundle, Component, BundledComponent};
+/// # use ggengine::gamecore::components::{Bundle, Component, ComponentId, BoxedComponent};
+/// # use std::iter::once;
 /// struct PackedBundle<T> {
 ///     inner_component: T
 /// }
 /// impl<T: Component> Bundle for PackedBundle<T> {
-///     fn bundled_components(self) -> impl IntoIterator<Item = BundledComponent> {
-///         BundledComponent::bundle(self.inner_component).bundled_components()
+///     fn component_ids() -> [ComponentId; {
+///         once(ComponentId::of::<T>())
+///     }
+///     fn boxed_components(self) -> [BoxedComponent; {
+///         let boxed_component: BoxedComponent = Box::new(self.inner_component);
+///         once(boxed_component)
 ///     }
 /// }
 /// ```
-/// [`BundledComponent`] ensures that the implementation is correct,
-/// because it automatically records necessary metadata of component.
 ///
-pub trait Bundle {
-    /// Consumes itself and returns iterator of [`BundledComponent`]s.
+/// Manual implementations (even those that leverage existing implementations) are rather clunky
+/// and susceptible to errors (fairly easy to mistype).
+/// With that in mind, you should either use implementation for tuples or use macros to implement
+/// everything for you.
+///
+pub trait Bundle<const N: usize> {
+    /// Returns ids of all components that are in the bundle.
     ///
-    fn bundled_components(self) -> impl IntoIterator<Item = BundledComponent>;
+    /// Since that can be done statically ([`Bundle`] is a static set), this function does not take `self`.
+    /// Although that requires splitting [`Bundle`] functionality
+    /// into two functions (which is more susceptible to errors),
+    /// that allows operating on [`Bundle`]s as on types (statically) through `Bundle::component_ids`. 
+    ///
+    fn component_ids() -> [ComponentId; N];
+    /// Consumes itself and returns iterator of [`BoxedComponent`]s.
+    ///
+    fn boxed_components(self) -> [BoxedComponent; N];
 }
-impl<T: Component> Bundle for T {
-    fn bundled_components(self) -> impl IntoIterator<Item = BundledComponent> {
-        BundledComponent::bundle(self).bundled_components()
+/// Type alias for `(ComponentId, BoxedComponent)`.
+///
+/// When [`Bundle`] is used, most of the time both the [`ComponentId`] and the [`BoxedComponent`]
+/// are needed; this type alias is specifically for those situations.
+///
+/// `bundled_components` function expresses that need - check docs for more information.
+///
+pub type BundledComponent = (ComponentId, BoxedComponent);
+/// `bundled_components` function zips two iterators of [`Bundle`] together.
+///
+/// Although functionality of [`Bundle`] is splitted in two functions
+/// (`Bundle::component_ids` does not require `self`, which allows operating on [`Bundle`]s as on types),
+/// it is still common to use those two iterators simultaneously, which could be done through this function.
+///
+pub fn bundled_components<B: Bundle<N>, const N: usize>(bundle: B) -> [BundledComponent; N] {
+    struct NoOpComponent;
+    impl Component for NoOpComponent {}
+
+    let component_ids = B::component_ids();
+    let mut boxed_components = bundle.boxed_components();
+    from_fn(|i| {
+        let mut component: Box<dyn Component> = Box::new(NoOpComponent);
+        swap(&mut component, &mut boxed_components[i]);
+        (component_ids[i], component)
+    })
+}
+impl<T: Component> Bundle<1> for T {
+    fn component_ids() -> [ComponentId; 1] {
+        [ComponentId::of::<T>()]
     }
-}
-impl Bundle for BundledComponent {
-    fn bundled_components(self) -> impl IntoIterator<Item = BundledComponent> {
-        once(self)
-    }
-}
-impl<T: IntoIterator<Item = BundledComponent>> Bundle for BundledIterator<T> {
-    fn bundled_components(self) -> impl IntoIterator<Item = BundledComponent> {
-        self.0
+    fn boxed_components(self) -> [BoxedComponent; 1] {
+        let boxed_component: Box<dyn Component> = Box::new(self);
+        [boxed_component]
     }
 }
 /// [`impl_bundle`] macro implements [`Bundle`] trait for tuples of arity 12 or less.
 ///
 macro_rules! impl_bundle {
-    () => {
-        impl Bundle for ()
-        {
-            fn bundled_components(self) -> impl IntoIterator<Item = BundledComponent> {
-                empty()
+    ($size:tt: $(($t:ident, $index:tt),)*) => {
+        impl<$($t: Component,)*> Bundle<$size> for ($($t,)*) {
+            fn component_ids() -> [ComponentId; $size] {
+                [$(ComponentId::of::<$t>(),)*]
+            }
+            fn boxed_components(self) -> [BoxedComponent; $size] {
+                [$(Box::new(self.$index),)*]
             }
         }
-    };
-    (($t_start:ident, $index_start:tt), $(($t:ident, $index:tt),)*) => {
-        impl<$t_start: Bundle, $($t: Bundle),*> Bundle for ($t_start, $($t,)*)
-        {
-            fn bundled_components(self) -> impl IntoIterator<Item = BundledComponent> {
-                self.$index_start.bundled_components().into_iter()$(.chain(self.$index.bundled_components().into_iter()))*
-            }
-        }
-        impl_bundle!($(($t, $index),)*);
     };
 }
-impl_bundle!(
-    (T00, 11),
-    (T01, 10),
-    (T02, 9),
-    (T03, 8),
-    (T04, 7),
-    (T05, 6),
-    (T06, 5),
-    (T07, 4),
-    (T08, 3),
-    (T09, 2),
-    (T10, 1),
-    (T11, 0),
-);
+impl_bundle!(0:);
+impl_bundle!(1: (T0, 0), );
+impl_bundle!(2: (T0, 0), (T1, 1), );
+impl_bundle!(3: (T0, 0), (T1, 1), (T2, 2), );
+impl_bundle!(4: (T0, 0), (T1, 1), (T2, 2), (T3, 3), );
+impl_bundle!(5: (T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), );
+impl_bundle!(6: (T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), );
+impl_bundle!(7: (T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), );
+impl_bundle!(8: (T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), );
+impl_bundle!(9: (T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8), );
+impl_bundle!(10: (T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8), (T9, 9), );
+impl_bundle!(11: (T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8), (T9, 9), (T10, 10), );
+impl_bundle!(12: (T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8), (T9, 9), (T10, 10), (T11, 11), );
 
 /// [`Resource`] trait defines unique global data that is bounded to the `Scene`.
 ///
@@ -480,7 +382,32 @@ impl_bundle!(
 pub trait Resource: Any {}
 impl fmt::Debug for dyn Resource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "dyn Resource ({:?})", type_name::<Self>())
+        write!(f, "{:?}", type_name::<Self>()) 
+    }
+}
+/// [`ResourceId`] id struct is needed to identify [`Resource`]s in [`Scene`](super::scenes::Scene).
+///
+/// It is assigned by the [`Scene`](super::scenes::Scene) in which this [`Resource`] is registered.
+///
+/// # Usage
+/// Usage of this struct is fairly advanced.
+/// Most of the time you should use convenient statically typed API,
+/// which is provided by [`Scene`](super::scenes::Scene).
+///
+/// Storages operate on ids, which allows them to provide more flexible interface.
+/// You can also try to trick type system by providing data that does not correspond to Rust type
+/// through id of existing 'fake' type.
+///
+/// That said, you should use typed API that `ggengine` exposes through several structs,
+/// not the API of `ggengine::storages` (unless absolutely needed).
+///
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ResourceId(TypeId);
+impl ResourceId {
+    /// Returns [`ResourceId`] of given [`Resource`] type.
+    ///
+    pub fn of<R: Resource>() -> Self {
+        ResourceId(TypeId::of::<R>())
     }
 }
 /// Type alias for `Box<dyn Resource>`.
@@ -492,19 +419,6 @@ impl fmt::Debug for dyn Resource {
 /// (`Vec`, iterator, etc.).
 ///
 pub type BoxedResource = Box<dyn Resource>;
-/// [`ResourceId`] id struct is needed to identify [`Resource`]s in [`Scene`](super::scenes::Scene).
-///
-/// It is assigned by the [`Scene`](super::scenes::Scene) in which this [`Resource`] is registered.
-///
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(super) struct ResourceId(TypeId);
-impl ResourceId {
-    /// Returns [`ResourceId`] of given [`Resource`] type.
-    ///
-    pub(super) fn of<R: Resource>() -> Self {
-        ResourceId(TypeId::of::<R>())
-    }
-}
 
 /// [`Downcastable`] trait allows [`Component`]s and [`Resource`]s
 /// to be downcasted to concrete types from behind `dyn` + indirection.
@@ -524,7 +438,18 @@ impl ResourceId {
 /// `ggengine` always uses this function in a context where conversion cannot fail and
 /// that makes this issue practically non-existent.
 ///
-pub(super) trait Downcastable {
+/// # Example
+/// ```rust
+/// # use ggengine::gamecore::components::{Resource, ResourceId, BoxedResource, Downcastable};
+/// struct Score(u32);
+/// impl Resource for Score {}
+///
+/// let boxed_score: BoxedResource = Box::new(Score(10));
+/// let score: &Score = boxed_score.downcast_to_ref::<Score>().expect("This type should correspond to this value");
+/// assert_eq!(score.0, 10);
+/// ```
+///
+pub trait Downcastable {
     /// Method that coerces `Box<Self>` to `T`.
     ///
     fn downcast_to_value<T: Any>(self: Box<Self>) -> Result<T, Box<dyn Any>>;
