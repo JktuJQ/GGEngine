@@ -1,14 +1,13 @@
 //! `gamecore::components` submodule defines [`Component`] trait
-//! that allows binding game logic that is represented in form of Rust types
-//! to exact [`Entity`](super::entities::Entity),
+//! that allows binding game logic that is represented in form of Rust types to entity,
 //! and implements several basic components used in games.
 //!
 
 use std::{
     any::{type_name, Any, TypeId},
+    array::from_fn,
     fmt,
     mem::swap,
-    array::from_fn
 };
 
 /// [`Component`] trait defines objects that are components by ECS terminology.
@@ -237,11 +236,11 @@ pub type BoxedComponent = Box<dyn Component>;
 ///     name: Name,
 ///     position: Position,
 /// }
-/// impl Bundle for PlayerBundle {
-///     fn component_ids() -> [ComponentId; {
+/// impl Bundle<3> for PlayerBundle {
+///     fn component_ids() -> [ComponentId; 3] {
 ///         <(Player, Name, Position)>::component_ids()
 ///     }
-///     fn boxed_components(self) -> [BoxedComponent; {
+///     fn boxed_components(self) -> [BoxedComponent; 3] {
 ///         (self.player, self.name, self.position).boxed_components()
 ///     }
 /// }
@@ -261,13 +260,12 @@ pub type BoxedComponent = Box<dyn Component>;
 /// struct PackedBundle<T> {
 ///     inner_component: T
 /// }
-/// impl<T: Component> Bundle for PackedBundle<T> {
-///     fn component_ids() -> [ComponentId; {
-///         once(ComponentId::of::<T>())
+/// impl<T: Component> Bundle<1> for PackedBundle<T> {
+///     fn component_ids() -> [ComponentId; 1] {
+///         [ComponentId::of::<T>()]
 ///     }
-///     fn boxed_components(self) -> [BoxedComponent; {
-///         let boxed_component: BoxedComponent = Box::new(self.inner_component);
-///         once(boxed_component)
+///     fn boxed_components(self) -> [BoxedComponent; 1] {
+///         [Box::new(self.inner_component)]
 ///     }
 /// }
 /// ```
@@ -283,7 +281,7 @@ pub trait Bundle<const N: usize> {
     /// Since that can be done statically ([`Bundle`] is a static set), this function does not take `self`.
     /// Although that requires splitting [`Bundle`] functionality
     /// into two functions (which is more susceptible to errors),
-    /// that allows operating on [`Bundle`]s as on types (statically) through `Bundle::component_ids`. 
+    /// that allows operating on [`Bundle`]s as on types (statically) through `Bundle::component_ids`.
     ///
     fn component_ids() -> [ComponentId; N];
     /// Consumes itself and returns iterator of [`BoxedComponent`]s.
@@ -321,8 +319,7 @@ impl<T: Component> Bundle<1> for T {
         [ComponentId::of::<T>()]
     }
     fn boxed_components(self) -> [BoxedComponent; 1] {
-        let boxed_component: Box<dyn Component> = Box::new(self);
-        [boxed_component]
+        [Box::new(self)]
     }
 }
 /// [`impl_bundle`] macro implements [`Bundle`] trait for tuples of arity 12 or less.
@@ -382,7 +379,7 @@ impl_bundle!(12: (T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), 
 pub trait Resource: Any {}
 impl fmt::Debug for dyn Resource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", type_name::<Self>()) 
+        write!(f, "{:?}", type_name::<Self>())
     }
 }
 /// [`ResourceId`] id struct is needed to identify [`Resource`]s in [`Scene`](super::scenes::Scene).

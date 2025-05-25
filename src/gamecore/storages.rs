@@ -3,7 +3,7 @@
 //!
 //! This submodule is fairly low-level; it uses plain ids to implement structures,
 //! which allows providing the most flexible interface.
-//! `ggengine` provides typed API on top of this module through several structs and
+//! `ggengine` provides typed API on top of this module through several structs; and
 //! you should use that, not the API of this submodule (unless absolutely needed).
 //!
 
@@ -82,10 +82,10 @@ type IdMap<K, V> = HashMap<K, V, NoOpHasherState>;
 /// (i.e. every `Vec` contains all `Component`s of one type that belong to different entities).
 ///
 /// Fetching components from a table involves fetching the associated column for a `Component` type
-/// (via its `ComponentId`), then fetching the entity's row within that column.
+/// (via its [`ComponentId`]), then fetching the entity's row within that column.
 ///
 /// # Performance
-/// [`EntityComponentStorage`] uses [`NoOpHasher`], because ids are reliable hashes due to implementation.
+/// [`EntityComponentStorage`] uses no-op hasher, because ids are reliable hashes due to implementation.
 ///
 /// Since components are stored in columnar contiguous blocks of memory, table is optimized for fast querying,
 /// but frequent insertion and removal can be relatively slow.
@@ -94,8 +94,9 @@ type IdMap<K, V> = HashMap<K, V, NoOpHasherState>;
 ///
 /// # Note
 /// This collection is designed to provide more fine-grained control over entity-component storage.
+/// That results in very verbose interface (heavy usage of `impl Iterator` to allow dynamic collections).
 /// Most of the time you should use [`EntityMut`] or its readonly counterpart and [`Scene`](super::scenes::Scene)
-/// to get nice API for operations related to entities.
+/// to get nice typed API for operations.
 /// Although examples in docs for [`EntityComponentStorage`] show usage of bare storage interface,
 /// it is not the recommended way of doing such operations.
 ///
@@ -132,12 +133,12 @@ impl EntityComponentStorage {
         }
     }
 
-    /// Inserts new entity supplying it with bundle.
+    /// Inserts new entity supplying it with components.
     ///
     /// Main feature of this function is that it allows to pass additional capacity,
     /// which will allow for allocation optimizations.
     ///
-    fn spawn_entity_with_capacity(
+    fn insert_entity_with_capacity(
         &mut self,
         components: impl Iterator<Item = BundledComponent>,
         entities_count_capacity: usize,
@@ -169,7 +170,7 @@ impl EntityComponentStorage {
         }
     }
 
-    /// Inserts bundled component into existing entity.
+    /// Inserts component into existing entity.
     ///
     /// Main feature of this function is that it allows to pass additional capacity,
     /// which will allow for allocation optimizations.
@@ -201,45 +202,48 @@ impl EntityComponentStorage {
         components_column[entity_index].replace(boxed_component)
     }
 
-    /// Inserts entity with components that are given in a [`Bundle`]
-    /// into [`EntityComponentStorage`] and returns mutable reference to it,
-    /// so it could be further modified.
+    /// Inserts entity with components into [`EntityComponentStorage`]
+    /// and returns mutable reference to it, so it could be further modified.
     ///
     /// # Examples
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, bundled_components};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
-    /// let player: EntityId = storage.spawn_entity((Player,)).entity_id;
+    /// let player: EntityId = storage.insert_entity(bundled_components((Player,)).into_iter()).entity_id;
     /// ```
     ///
-    /// You can spawn empty entity to defer initialization by passing `()` as a [`Bundle`]:
+    /// You can insert empty entity to defer initialization by passing `empty()`:
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::entities::EntityId;
+    /// # use std::iter::empty;
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
-    /// let player: EntityId = storage.spawn_entity(()).entity_id;
+    /// let player: EntityId = storage.insert_entity(empty()).entity_id;
     /// ```
     ///
-    pub fn spawn_entity(&mut self, components: impl Iterator<Item = BundledComponent>) -> EntityMut {
-        self.spawn_entity_with_capacity(components, 0)
+    pub fn insert_entity(
+        &mut self,
+        components: impl Iterator<Item = BundledComponent>,
+    ) -> EntityMut {
+        self.insert_entity_with_capacity(components, 0)
     }
-    /// Inserts multiple entities with components that are given in [`Bundle`]s
-    /// into [`EntityComponentStorage`] and returns ids of those entities.
+    /// Inserts multiple entities with components into [`EntityComponentStorage`]
+    /// and returns ids of those entities.
     ///
-    /// It is more efficient than calling `EntityComponentStorage::spawn_entity` in a loop.
+    /// It is more efficient than calling `EntityComponentStorage::insert_entity` in a loop.
     ///
     /// # Note
-    /// This function can only insert entities with the same [`Bundle`] type.
+    /// This function can only insert entities with same components type.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, bundled_components};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct NPC;
     /// impl Component for NPC {}
@@ -248,14 +252,14 @@ impl EntityComponentStorage {
     /// impl Component for Name {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
-    /// let npcs: Vec<EntityId> = storage.spawn_entities(vec![
-    ///     (NPC, Name("Alice")),
-    ///     (NPC, Name("Bob")),
-    ///     (NPC, Name("Charlie"))
+    /// let npcs: Vec<EntityId> = storage.insert_entities(vec![
+    ///     bundled_components((NPC, Name("Alice"))).into_iter(),
+    ///     bundled_components((NPC, Name("Bob"))).into_iter(),
+    ///     bundled_components((NPC, Name("Charlie"))).into_iter()
     /// ]);
     /// ```
     ///
-    pub fn spawn_entities(
+    pub fn insert_entities(
         &mut self,
         many_components: impl IntoIterator<Item = impl Iterator<Item = BundledComponent>>,
     ) -> Vec<EntityId> {
@@ -274,27 +278,30 @@ impl EntityComponentStorage {
 
         let mut ids = Vec::new();
         for components in many_components_iter {
-            ids.push(self.spawn_entity_with_capacity(components, resizing).entity_id);
+            ids.push(
+                self.insert_entity_with_capacity(components, resizing)
+                    .entity_id,
+            );
         }
         ids
     }
-    /// Removes entity from [`EntityComponentStorage`] by removing all of its components.
+    /// Removes entity from [`EntityComponentStorage`].
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, bundled_components};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.spawn_entity((Player,)).entity_id;
-    /// storage.despawn_entity(player);
+    /// let player: EntityId = storage.insert_entity(bundled_components((Player,)).into_iter()).entity_id;
+    /// storage.remove_entity(player);
     /// ```
     ///
-    pub fn despawn_entity(&mut self, entity_id: EntityId) -> bool {
+    pub fn remove_entity(&mut self, entity_id: EntityId) -> bool {
         if self.removed_entities.contains(&entity_id) {
             return false;
         }
@@ -313,17 +320,17 @@ impl EntityComponentStorage {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, bundled_components};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.spawn_entity((Player,)).entity_id;
+    /// let player: EntityId = storage.insert_entity(bundled_components((Player,)).into_iter()).entity_id;
     /// assert!(storage.contains_entity(player));
     ///
-    /// storage.despawn_entity(player);
+    /// storage.remove_entity(player);
     /// assert!(!storage.contains_entity(player));
     /// ```
     ///
@@ -336,15 +343,19 @@ impl EntityComponentStorage {
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::entities::{EntityId, EntityRef};
+    /// # use std::iter::empty;
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.spawn_entity(()).entity_id;
-    /// let player_ref: EntityRef = storage.entity(player).expect("Entity was spawned");
+    /// let player: EntityId = storage.insert_entity(empty()).entity_id;
+    /// let player_ref: EntityRef = storage.entity(player).expect("Entity was inserted");
     /// ```
     ///
     pub fn entity(&self, entity_id: EntityId) -> Option<EntityRef> {
         if self.contains_entity(entity_id) {
-            Some(EntityRef { entity_id, entity_component_storage: self })
+            Some(EntityRef {
+                entity_id,
+                entity_component_storage: self,
+            })
         } else {
             None
         }
@@ -355,15 +366,19 @@ impl EntityComponentStorage {
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::entities::{EntityId, EntityMut};
+    /// # use std::iter::empty;
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.spawn_entity(()).entity_id;
-    /// let player_mut: EntityMut = storage.entity_mut(player).expect("Entity was spawned");
+    /// let player: EntityId = storage.insert_entity(empty()).entity_id;
+    /// let player_mut: EntityMut = storage.entity_mut(player).expect("Entity was inserted");
     /// ```
     ///
     pub fn entity_mut(&mut self, entity_id: EntityId) -> Option<EntityMut> {
         if self.contains_entity(entity_id) {
-            Some(EntityMut { entity_id, entity_component_storage: self })
+            Some(EntityMut {
+                entity_id,
+                entity_component_storage: self,
+            })
         } else {
             None
         }
@@ -376,12 +391,13 @@ impl EntityComponentStorage {
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::components::{Component, ComponentId};
     /// # use ggengine::gamecore::entities::EntityId;
+    /// # use std::iter::empty;
     /// struct Player;
     /// impl Component for Player {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.spawn_entity(()).entity_id;
+    /// let player: EntityId = storage.insert_entity(empty()).entity_id;
     /// storage.insert_component(player, ComponentId::of::<Player>(), Box::new(Player));
     /// ```
     ///
@@ -393,13 +409,14 @@ impl EntityComponentStorage {
     ) -> Option<BoxedComponent> {
         self.insert_bundled_component_with_capacity(entity_id, component_id, boxed_component, 0)
     }
-    /// Inserts bundle of components into given entity.
+    /// Inserts components into given entity.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, bundled_components};
     /// # use ggengine::gamecore::entities::EntityId;
+    /// # use std::iter::empty;
     /// struct Player;
     /// impl Component for Player {}
     ///
@@ -408,11 +425,15 @@ impl EntityComponentStorage {
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.spawn_entity(()).entity_id;
-    /// storage.insert_bundle(player, bundled_components((Player, Health(10))));
+    /// let player: EntityId = storage.insert_entity(empty()).entity_id;
+    /// storage.insert_components(player, bundled_components((Player, Health(10))).into_iter());
     /// ```
     ///
-    pub fn insert_components(&mut self, entity_id: EntityId, components: impl Iterator<Item = BundledComponent>) {
+    pub fn insert_components(
+        &mut self,
+        entity_id: EntityId,
+        components: impl Iterator<Item = BundledComponent>,
+    ) {
         for (component_id, boxed_component) in components {
             let _ = self.insert_bundled_component_with_capacity(
                 entity_id,
@@ -427,14 +448,14 @@ impl EntityComponentStorage {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, ComponentId};
+    /// # use ggengine::gamecore::components::{Component, ComponentId, bundled_components};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.spawn_entity((Player,)).entity_id;
+    /// let player: EntityId = storage.insert_entity(bundled_components((Player,)).into_iter()).entity_id;
     /// storage.remove_component(player, ComponentId::of::<Player>());
     /// assert!(storage.contains_entity(player));
     /// ```
@@ -454,22 +475,32 @@ impl EntityComponentStorage {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, ComponentId};
+    /// # use ggengine::gamecore::components::{Component, ComponentId, bundled_components};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
+    ///
+    /// struct Name(String);
+    /// impl Component for Name {}
     ///
     /// struct Health(u32);
     /// impl Component for Health {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.spawn_entity((Player, Health(10),)).entity_id;
-    /// storage.remove_components(player, ComponentId::of::<Player>());
+    /// let player: EntityId = storage.insert_entity(bundled_components((Player, Name("Alice".to_string()), Health(10),)).into_iter()).entity_id;
+    /// storage.remove_components(player, [ComponentId::of::<Player>(), ComponentId::of::<Health>()].into_iter());
     /// assert!(storage.contains_entity(player));
+    /// assert!(!storage.contains_component(player, ComponentId::of::<Player>()));
+    /// assert!(storage.contains_component(player, ComponentId::of::<Name>()));
+    /// assert!(!storage.contains_component(player, ComponentId::of::<Health>()));
     /// ```
     ///
-    pub fn remove_components(&mut self, entity_id: EntityId, component_ids: impl Iterator<Item = ComponentId>) {
+    pub fn remove_components(
+        &mut self,
+        entity_id: EntityId,
+        component_ids: impl Iterator<Item = ComponentId>,
+    ) {
         for component_id in component_ids {
             let _ = self.remove_component(entity_id, component_id);
         }
@@ -479,7 +510,7 @@ impl EntityComponentStorage {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, ComponentId, bundled_components};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
@@ -489,9 +520,11 @@ impl EntityComponentStorage {
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.spawn_entity(bundled_components((Player, Health(10)))).entity_id;
+    /// let player: EntityId = storage.insert_entity(bundled_components((Player, Health(10))).into_iter()).entity_id;
     /// storage.remove_all_components(player);
     /// assert!(storage.contains_entity(player));
+    /// assert!(!storage.contains_component(player, ComponentId::of::<Player>()));
+    /// assert!(!storage.contains_component(player, ComponentId::of::<Health>()));
     /// ```
     ///
     pub fn remove_all_components(&mut self, entity_id: EntityId) {
@@ -507,14 +540,14 @@ impl EntityComponentStorage {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, ComponentId};
+    /// # use ggengine::gamecore::components::{Component, ComponentId, bundled_components};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.spawn_entity((Player,)).entity_id;
+    /// let player: EntityId = storage.insert_entity(bundled_components((Player,)).into_iter()).entity_id;
     /// assert!(storage.contains_component(player, ComponentId::of::<Player>()));
     ///
     /// storage.remove_component(player, ComponentId::of::<Player>());
@@ -532,7 +565,7 @@ impl EntityComponentStorage {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, ComponentId, BoxedComponent};
+    /// # use ggengine::gamecore::components::{Component, ComponentId, BoxedComponent, bundled_components};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
@@ -542,7 +575,7 @@ impl EntityComponentStorage {
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.spawn_entity(bundled_components((Player, Health(10)))).entity_id;
+    /// let player: EntityId = storage.insert_entity(bundled_components((Player, Health(10))).into_iter()).entity_id;
     /// let health: BoxedComponent = storage.component_take(player, ComponentId::of::<Health>()).expect("Component is present");
     /// assert!(!storage.contains_component(player, ComponentId::of::<Health>()));
     /// ```
@@ -562,7 +595,7 @@ impl EntityComponentStorage {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, ComponentId};
+    /// # use ggengine::gamecore::components::{Component, ComponentId, bundled_components};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
@@ -572,7 +605,7 @@ impl EntityComponentStorage {
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.spawn_entity(bundled_components((Player, Health(10)))).entity_id;
+    /// let player: EntityId = storage.insert_entity(bundled_components((Player, Health(10))).into_iter()).entity_id;
     /// assert!(storage.component(player, ComponentId::of::<Health>()).is_some());
     /// ```
     ///
@@ -588,7 +621,7 @@ impl EntityComponentStorage {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, ComponentId};
+    /// # use ggengine::gamecore::components::{Component, ComponentId, bundled_components};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
@@ -598,7 +631,7 @@ impl EntityComponentStorage {
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.spawn_entity(bundled_components((Player, Health(10)))).entity_id;
+    /// let player: EntityId = storage.insert_entity(bundled_components((Player, Health(10))).into_iter()).entity_id;
     /// assert!(storage.component_mut(player, ComponentId::of::<Health>()).is_some());
     /// ```
     ///
@@ -619,7 +652,7 @@ impl EntityComponentStorage {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, ComponentId};
+    /// # use ggengine::gamecore::components::{Component, ComponentId, bundled_components};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
@@ -629,7 +662,7 @@ impl EntityComponentStorage {
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.spawn_entity((Player,)).entity_id;
+    /// let player: EntityId = storage.insert_entity(bundled_components((Player,)).into_iter()).entity_id;
     /// let _ = storage.component_get_or_insert_with(player, ComponentId::of::<Health>(), || Box::new(Health(10)));
     /// assert!(storage.contains_component(player, ComponentId::of::<Health>()));
     /// ```
@@ -656,7 +689,8 @@ impl EntityComponentStorage {
     }
 }
 
-/// [`ResourceStorage`] struct provides API for a storage of [`Resource`]s.
+/// [`ResourceStorage`] struct provides API
+/// for a storage of [`Resource`](super::components::Resource)s.
 ///
 #[derive(Debug, Default)]
 pub struct ResourceStorage {
