@@ -48,8 +48,8 @@ impl Scene {
         self.resource_storage.clear();
     }
 }
+// entity-component scene
 impl Scene {
-    // entity-component scene
     /// inserts entity with components that are given in a [`Bundle`]
     /// into [`Scene`] and returns mutable reference to it,
     /// so it could be further modified.
@@ -63,7 +63,7 @@ impl Scene {
     /// impl Component for Player {}
     ///
     /// let mut scene: Scene = Scene::new();
-    /// let player: EntityId = scene.spawn_entity((Player,)).entity_id;
+    /// let player: EntityId = scene.spawn_entity((Player,)).id();
     /// ```
     ///
     /// You can spawn empty entity to defer initialization by passing `()` as a [`Bundle`]:
@@ -71,7 +71,7 @@ impl Scene {
     /// # use ggengine::gamecore::scenes::Scene;
     /// # use ggengine::gamecore::entities::EntityId;
     /// let mut scene: Scene = Scene::new();
-    /// let player: EntityId = scene.spawn_entity(()).entity_id;
+    /// let player: EntityId = scene.spawn_entity(()).id();
     /// ```
     ///
     pub fn spawn_entity<B: Bundle<N>, const N: usize>(&mut self, bundle: B) -> EntityMut {
@@ -79,7 +79,7 @@ impl Scene {
             .insert_entity(bundled_components(bundle).into_iter())
     }
     /// Inserts multiple entities with components that are given in [`Bundle`]s
-    /// into [`Scene`] and returns ids of those entities.
+    /// into [`Scene`] and returns immutable references to those entities.
     ///
     /// It is more efficient than calling `Scene::spawn_entity` in a loop.
     ///
@@ -90,7 +90,7 @@ impl Scene {
     /// ```rust
     /// # use ggengine::gamecore::scenes::Scene;
     /// # use ggengine::gamecore::components::Component;
-    /// # use ggengine::gamecore::entities::EntityId;
+    /// # use ggengine::gamecore::entities::EntityRef;
     /// struct NPC;
     /// impl Component for NPC {}
     ///
@@ -98,17 +98,17 @@ impl Scene {
     /// impl Component for Name {}
     ///
     /// let mut scene: Scene = Scene::new();
-    /// let npcs: Vec<EntityId> = scene.spawn_entities(vec![
+    /// let npcs: Vec<EntityRef> = scene.spawn_entities(vec![
     ///     (NPC, Name("Alice")),
     ///     (NPC, Name("Bob")),
     ///     (NPC, Name("Charlie"))
-    /// ]);
+    /// ]).collect::<Vec<EntityRef>>();
     /// ```
     ///
     pub fn spawn_entities<B: Bundle<N>, const N: usize>(
         &mut self,
         bundles: impl IntoIterator<Item = B>,
-    ) -> Vec<EntityId> {
+    ) -> impl Iterator<Item = EntityRef> {
         self.entity_component_storage.insert_entities(
             bundles
                 .into_iter()
@@ -127,7 +127,7 @@ impl Scene {
     ///
     /// let mut scene: Scene = Scene::new();
     ///
-    /// let player: EntityId = scene.spawn_entity((Player,)).entity_id;
+    /// let player: EntityId = scene.spawn_entity((Player,)).id();
     /// scene.despawn_entity(player);
     /// ```
     ///
@@ -146,7 +146,7 @@ impl Scene {
     ///
     /// let mut scene: Scene = Scene::new();
     ///
-    /// let player: EntityId = scene.spawn_entity((Player,)).entity_id;
+    /// let player: EntityId = scene.spawn_entity((Player,)).id();
     /// assert!(scene.contains_entity(player));
     ///
     /// scene.despawn_entity(player);
@@ -164,7 +164,7 @@ impl Scene {
     /// # use ggengine::gamecore::entities::{EntityId, EntityRef};
     /// let mut scene: Scene = Scene::new();
     ///
-    /// let player: EntityId = scene.spawn_entity(()).entity_id;
+    /// let player: EntityId = scene.spawn_entity(()).id();
     /// let player_ref: EntityRef = scene.entity(player).expect("Entity was spawned.");
     /// ```
     ///
@@ -179,7 +179,7 @@ impl Scene {
     /// # use ggengine::gamecore::entities::{EntityId, EntityMut};
     /// let mut scene: Scene = Scene::new();
     ///
-    /// let player: EntityId = scene.spawn_entity(()).entity_id;
+    /// let player: EntityId = scene.spawn_entity(()).id();
     /// let player_mut: EntityMut = scene.entity_mut(player).expect("Entity was spawned.");
     /// ```
     ///
@@ -187,8 +187,8 @@ impl Scene {
         self.entity_component_storage.entity_mut(entity_id)
     }
 }
+// resource scene
 impl Scene {
-    // resource scene
     /// Inserts a new resource with the given value.
     ///
     /// Resources are unique data of a given type.

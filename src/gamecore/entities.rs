@@ -14,7 +14,6 @@ use std::hash::{Hash, Hasher};
 /// It is assigned by the [`Scene`](super::scenes::Scene) in which
 /// this entity is registered.
 ///
-/// # Note
 /// [`EntityId`] is only valid for the [`Scene`](super::scenes::Scene) it was obtained from,
 /// and although you can use it for any other scene,
 /// fetching will either fail or return unexpected results.
@@ -40,12 +39,39 @@ impl Hash for EntityId {
 pub struct EntityRef<'a> {
     /// Entity id.
     ///
-    pub entity_id: EntityId,
+    entity_id: EntityId,
     /// Entity scene which can be navigated by `entity_id`.
     ///
-    pub entity_component_storage: &'a EntityComponentStorage,
+    entity_component_storage: &'a EntityComponentStorage,
 }
 impl EntityRef<'_> {
+    /// Creates new [`EntityRef`], immutably borrowing [`EntityComponentStorage`].
+    ///
+    pub(super) fn new(
+        entity_id: EntityId,
+        entity_component_storage: &EntityComponentStorage,
+    ) -> EntityRef {
+        EntityRef {
+            entity_id,
+            entity_component_storage,
+        }
+    }
+
+    /// Returns id of this entity.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::entities::{EntityId, EntityRef};
+    /// # use ggengine::gamecore::scenes::Scene;
+    /// let mut scene: Scene = Scene::new();
+    ///
+    /// let entity: EntityId = EntityRef::from(scene.spawn_entity(())).id();
+    /// ```
+    ///
+    pub fn id(&self) -> EntityId {
+        self.entity_id
+    }
+
     /// Returns whether this component is present in entity or not.
     ///
     /// # Example
@@ -112,12 +138,39 @@ impl<'a> From<EntityMut<'a>> for EntityRef<'a> {
 pub struct EntityMut<'a> {
     /// Entity id.
     ///
-    pub entity_id: EntityId,
+    entity_id: EntityId,
     /// Entity scene which can be navigated by `entity_id`.
     ///
-    pub entity_component_storage: &'a mut EntityComponentStorage,
+    entity_component_storage: &'a mut EntityComponentStorage,
 }
 impl EntityMut<'_> {
+    /// Creates new [`EntityMut`], immutably borrowing [`EntityComponentStorage`].
+    ///
+    pub(super) fn new(
+        entity_id: EntityId,
+        entity_component_storage: &mut EntityComponentStorage,
+    ) -> EntityMut {
+        EntityMut {
+            entity_id,
+            entity_component_storage,
+        }
+    }
+
+    /// Returns id of this entity.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::entities::EntityId;
+    /// # use ggengine::gamecore::scenes::Scene;
+    /// let mut scene: Scene = Scene::new();
+    ///
+    /// let entity: EntityId = scene.spawn_entity(()).id();
+    /// ```
+    ///
+    pub fn id(&self) -> EntityId {
+        self.entity_id
+    }
+
     /// Consumes [`EntityMut`] and despawns its entity.
     ///
     /// When this function is called,
@@ -130,7 +183,7 @@ impl EntityMut<'_> {
     /// let mut scene: Scene = Scene::new();
     ///
     /// let entity: EntityMut = scene.spawn_entity(());
-    /// let entity_id: EntityId = entity.entity_id;
+    /// let entity_id: EntityId = entity.id();
     /// entity.despawn();
     /// assert!(!scene.contains_entity(entity_id));
     /// ```
@@ -293,34 +346,6 @@ impl EntityMut<'_> {
     pub fn contains<C: Component>(&self) -> bool {
         self.entity_component_storage
             .contains_component(self.entity_id, ComponentId::of::<C>())
-    }
-    /// Extracts component from this entity and returns it if present.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::gamecore::entities::EntityMut;
-    /// # use ggengine::gamecore::scenes::Scene;
-    /// # use ggengine::gamecore::components::Component;
-    /// struct Player;
-    /// impl Component for Player {}
-    ///
-    /// struct Health(u32);
-    /// impl Component for Health {}
-    ///
-    /// let mut scene: Scene = Scene::new();
-    ///
-    /// let mut entity: EntityMut = scene.spawn_entity((Player, Health(10)));
-    /// let health: Health = entity.take::<Health>().expect("Component is present");
-    /// assert_eq!(health.0, 10);
-    /// ```
-    pub fn take<C: Component>(&mut self) -> Option<C> {
-        self.entity_component_storage
-            .component_take(self.entity_id, ComponentId::of::<C>())
-            .map(|boxed_component| {
-                boxed_component
-                    .downcast_to_value::<C>()
-                    .expect("This type should correspond to this value")
-            })
     }
     /// Returns immutable reference to the component of this entity if present.
     ///
