@@ -2,8 +2,9 @@
 //! all game objects, components and systems that are bound to that [`Scene`].
 //!
 
+use crate::gamecore::components::ComponentId;
 use crate::gamecore::{
-    components::{bundled_components, Bundle, Downcastable, Resource, ResourceId},
+    components::{bundled_components, Bundle, Component, Downcastable, Resource, ResourceId},
     entities::{EntityId, EntityMut, EntityRef},
     storages::{EntityComponentStorage, ResourceStorage},
 };
@@ -12,7 +13,9 @@ use crate::gamecore::{
 ///
 /// Parts of [`Scene`] are fairly low-level, and so this struct tries to
 /// provide nice typed API for interfaces of those storages.
-/// See [`EntityMut`]/[`EntityRef`] for typed API for component access.
+///
+/// [`EntityComponentStorage`]: [`Scene`] provides only interface for functions that do not operate on entities exactly,
+/// see [`EntityMut`]/[`EntityRef`] for typed API for component access.
 ///
 #[derive(Debug, Default)]
 pub struct Scene {
@@ -134,6 +137,34 @@ impl Scene {
     pub fn despawn_entity(&mut self, entity_id: EntityId) -> bool {
         self.entity_component_storage.remove_entity(entity_id)
     }
+    /// Returns number of entities that are currently present in the scene.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::scenes::Scene;
+    /// # use ggengine::gamecore::components::{Component, bundled_components};
+    /// # use ggengine::gamecore::entities::{EntityId, EntityRef};
+    /// struct NPC;
+    /// impl Component for NPC {}
+    ///
+    /// struct Name(&'static str);
+    /// impl Component for Name {}
+    ///
+    /// let mut scene: Scene = Scene::new();
+    ///
+    /// let npcs: Vec<EntityRef> = scene.spawn_entities(vec![
+    ///     (NPC, Name("Alice")),
+    ///     (NPC, Name("Bob")),
+    ///     (NPC, Name("Charlie"))
+    /// ]).collect::<Vec<EntityRef>>();
+    /// let npc: EntityId = npcs[0].id();
+    /// assert_eq!(scene.entities_count(), 3);
+    /// scene.despawn_entity(npc);
+    /// assert_eq!(scene.entities_count(), 2);
+    ///
+    pub fn entities_count(&self) -> usize {
+        self.entity_component_storage.entities_count()
+    }
     /// Returns whether an entity with given id is currently stored or not.
     ///
     /// # Example
@@ -171,6 +202,36 @@ impl Scene {
     pub fn entity(&self, entity_id: EntityId) -> Option<EntityRef> {
         self.entity_component_storage.entity(entity_id)
     }
+    /// Returns references to all entities that are inserted in the scene.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::scenes::Scene;
+    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::entities::EntityId;
+    /// struct NPC;
+    /// impl Component for NPC {}
+    ///
+    /// struct Name(&'static str);
+    /// impl Component for Name {}
+    ///
+    /// let mut scene: Scene = Scene::new();
+    ///
+    /// let npcs1: Vec<EntityId> = scene.spawn_entities(vec![
+    ///     (NPC, Name("Alice")),
+    ///     (NPC, Name("Bob")),
+    ///     (NPC, Name("Charlie"))
+    /// ]).map(|entity| entity.id()).collect::<Vec<EntityId>>();
+    /// let npcs2: Vec<EntityId> = scene.all_entities()
+    ///     .map(|entity| entity.id()).collect::<Vec<EntityId>>();
+    /// for (id1, id2) in npcs1.iter().zip(npcs2.iter()) {
+    ///     assert_eq!(id1, id2);
+    /// }
+    /// ```
+    ///
+    pub fn all_entities(&self) -> impl Iterator<Item = EntityRef> {
+        self.entity_component_storage.all_entities()
+    }
     /// Returns mutable reference to entity in [`Scene`] if present.
     ///
     /// # Example
@@ -185,6 +246,120 @@ impl Scene {
     ///
     pub fn entity_mut(&mut self, entity_id: EntityId) -> Option<EntityMut> {
         self.entity_component_storage.entity_mut(entity_id)
+    }
+
+    /// Extracts all component of one type from scene.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::scenes::Scene;
+    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::entities::EntityRef;
+    /// struct NPC;
+    /// impl Component for NPC {}
+    ///
+    /// struct Name(&'static str);
+    /// impl Component for Name {}
+    ///
+    /// let mut scene: Scene = Scene::new();
+    ///
+    /// let npcs: Vec<EntityRef> = scene.spawn_entities(vec![
+    ///     (NPC, Name("Alice")),
+    ///     (NPC, Name("Bob")),
+    ///     (NPC, Name("Charlie"))
+    /// ]).collect::<Vec<EntityRef>>();
+    /// let names: Vec<Name> = scene.components_take::<Name>()
+    ///     .expect("Component is present")
+    ///     .collect::<Vec<Name>>();
+    /// assert_eq!(names.len(), 3);
+    /// ```
+    ///
+    pub fn components_take<C: Component>(
+        &mut self,
+    ) -> Option<impl Iterator<Item = C> + use<'_, C>> {
+        self.entity_component_storage
+            .components_take(ComponentId::of::<C>())
+            .map(|components| {
+                components.map(|component| {
+                    component
+                        .downcast_to_value::<C>()
+                        .expect("This type should correspond to this value")
+                })
+            })
+    }
+    /// Returns immutable references to all components of one type.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::scenes::Scene;
+    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::entities::EntityRef;
+    /// struct NPC;
+    /// impl Component for NPC {}
+    ///
+    /// struct Name(&'static str);
+    /// impl Component for Name {}
+    ///
+    /// let mut scene: Scene = Scene::new();
+    ///
+    /// let npcs: Vec<EntityRef> = scene.spawn_entities(vec![
+    ///     (NPC, Name("Alice")),
+    ///     (NPC, Name("Bob")),
+    ///     (NPC, Name("Charlie"))
+    /// ]).collect::<Vec<EntityRef>>();
+    /// let names: Vec<&Name> = scene.components::<Name>()
+    ///     .expect("Component is present")
+    ///     .collect::<Vec<&Name>>();
+    /// assert_eq!(names.len(), 3);
+    /// ```
+    ///
+    pub fn components<C: Component>(&self) -> Option<impl Iterator<Item = &C>> {
+        self.entity_component_storage
+            .components(ComponentId::of::<C>())
+            .map(|components| {
+                components.map(|component| {
+                    component
+                        .downcast_to_ref::<C>()
+                        .expect("This type should correspond to this value")
+                })
+            })
+    }
+    /// Returns mutable references to all components of one type.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::scenes::Scene;
+    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::entities::EntityRef;
+    /// struct NPC;
+    /// impl Component for NPC {}
+    ///
+    /// struct Name(&'static str);
+    /// impl Component for Name {}
+    ///
+    /// let mut scene: Scene = Scene::new();
+    ///
+    /// let npcs: Vec<EntityRef> = scene.spawn_entities(vec![
+    ///     (NPC, Name("Alice")),
+    ///     (NPC, Name("Bob")),
+    ///     (NPC, Name("Charlie"))
+    /// ]).collect::<Vec<EntityRef>>();
+    /// let names: Vec<&mut Name> = scene.components_mut::<Name>()
+    ///     .expect("Component is present")
+    ///     .collect::<Vec<&mut Name>>();
+    /// assert_eq!(names.len(), 3);
+    /// ```
+    ///
+    pub fn components_mut<C: Component>(&mut self) -> Option<impl Iterator<Item = &mut C>> {
+        self.entity_component_storage
+            .components_mut(ComponentId::of::<C>())
+            .map(|components| {
+                components.map(|component| {
+                    component
+                        .downcast_to_mut::<C>()
+                        .expect("This type should correspond to this value")
+                })
+            })
     }
 }
 // resource scene

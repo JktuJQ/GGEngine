@@ -279,7 +279,7 @@ impl EntityMut<'_> {
     /// struct Player;
     /// impl Component for Player {}
     ///
-    /// struct Name(String);
+    /// struct Name(&'static str);
     /// impl Component for Name {}
     ///
     /// struct Health(u32);
@@ -287,7 +287,7 @@ impl EntityMut<'_> {
     ///
     /// let mut scene: Scene = Scene::new();
     ///
-    /// let mut entity: EntityMut = scene.spawn_entity((Player, Name("Alice".to_string()), Health(10),));
+    /// let mut entity: EntityMut = scene.spawn_entity((Player, Name("Alice"), Health(10),));
     /// entity.remove_many::<2, (Player, Health)>();
     /// assert!(!entity.contains::<Player>());
     /// assert!(entity.contains::<Name>());

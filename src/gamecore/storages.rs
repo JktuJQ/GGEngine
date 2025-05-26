@@ -71,7 +71,7 @@ type IdSet<T> = HashSet<T, NoOpHasherState>;
 ///
 type IdMap<K, V> = HashMap<K, V, NoOpHasherState>;
 /// [`EntityComponentStorage`] is a column-oriented structure-of-arrays based storage
-/// that maps entities to their `Component`s.
+/// that maps entities to their [`Component`](super::components::Component)s.
 ///
 /// Conceptually, [`EntityComponentStorage`] can be thought of as an `HashMap<ComponentId, Vec<Option<BoxedComponent>>>`,
 /// where each `Vec` contains components of one type that belong to different entities.
@@ -406,7 +406,7 @@ impl EntityComponentStorage {
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::components::{Component, bundled_components};
-    /// # use ggengine::gamecore::entities::{EntityId, EntityRef};
+    /// # use ggengine::gamecore::entities::EntityId;
     /// struct NPC;
     /// impl Component for NPC {}
     ///
@@ -425,18 +425,10 @@ impl EntityComponentStorage {
     /// for (id1, id2) in npcs1.iter().zip(npcs2.iter()) {
     ///     assert_eq!(id1, id2);
     /// }
-    ///
     /// ```
     ///
     pub fn all_entities(&self) -> impl Iterator<Item = EntityRef> {
-        (0..self.max_vacant_index).filter_map(|id| {
-            let entity_id = EntityId(id);
-            if !self.removed_entities.contains(&entity_id) {
-                Some(EntityRef::new(entity_id, self))
-            } else {
-                None
-            }
-        })
+        (0..self.max_vacant_index).filter_map(|id| self.entity(EntityId(id)))
     }
     /// Returns mutable reference to entity in [`EntityComponentStorage`] if present.
     ///
@@ -628,78 +620,6 @@ impl EntityComponentStorage {
             }
         }
     }
-    /// Extracts all component of one type from storage.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, bundled_components, ComponentId, BoxedComponent};
-    /// # use ggengine::gamecore::entities::EntityRef;
-    /// struct NPC;
-    /// impl Component for NPC {}
-    ///
-    /// struct Name(&'static str);
-    /// impl Component for Name {}
-    ///
-    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
-    ///
-    /// let npcs: Vec<EntityRef> = storage.insert_entities(vec![
-    ///     bundled_components((NPC, Name("Alice"))).into_iter(),
-    ///     bundled_components((NPC, Name("Bob"))).into_iter(),
-    ///     bundled_components((NPC, Name("Charlie"))).into_iter()
-    /// ]).collect::<Vec<EntityRef>>();
-    /// let names: Vec<BoxedComponent> = storage.extract_components(ComponentId::of::<Name>())
-    ///     .expect("Component is present")
-    ///     .collect::<Vec<BoxedComponent>>();
-    /// assert_eq!(names.len(), 3);
-    /// ```
-    ///
-    pub fn extract_components(
-        &mut self,
-        component_id: ComponentId,
-    ) -> Option<impl Iterator<Item = BoxedComponent> + use<'_>> {
-        Some(
-            self.table
-                .remove(&component_id)?
-                .into_iter()
-                .enumerate()
-                .filter_map(|(id, component)| {
-                    if !self.removed_entities.contains(&EntityId(id)) {
-                        component
-                    } else {
-                        None
-                    }
-                }),
-        )
-    }
-    /// Returns the number of components that were registered in the storage.
-    ///
-    /// [`EntityComponentStorage`] does not track whether a component is removed completely or not,
-    /// so even if all components of some type were removed, but they were present previously (registered),
-    /// they will count.
-    /// The only thing that fully removes component is `EntityComponentStorage::extract_components` function.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, ComponentId, bundled_components};
-    /// struct Player;
-    /// impl Component for Player {}
-    ///
-    /// struct Health(u32);
-    /// impl Component for Health {}
-    ///
-    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
-    ///
-    /// let _ = storage.insert_entity(
-    ///     bundled_components((Player, Health(10))).into_iter()
-    /// );
-    /// assert_eq!(storage.components_count(), 2);
-    /// ```
-    ///
-    pub fn components_count(&self) -> usize {
-        self.table.len()
-    }
     /// Returns whether this component is present in an entity or not.
     ///
     /// # Example
@@ -726,6 +646,50 @@ impl EntityComponentStorage {
             .get(&component_id)
             .and_then(|component_column| component_column.get(entity_id.0))
             .is_some_and(|component| component.is_some())
+    }
+    /// Extracts all component of one type from storage.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
+    /// # use ggengine::gamecore::components::{Component, bundled_components, ComponentId, BoxedComponent};
+    /// # use ggengine::gamecore::entities::EntityRef;
+    /// struct NPC;
+    /// impl Component for NPC {}
+    ///
+    /// struct Name(&'static str);
+    /// impl Component for Name {}
+    ///
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    ///
+    /// let npcs: Vec<EntityRef> = storage.insert_entities(vec![
+    ///     bundled_components((NPC, Name("Alice"))).into_iter(),
+    ///     bundled_components((NPC, Name("Bob"))).into_iter(),
+    ///     bundled_components((NPC, Name("Charlie"))).into_iter()
+    /// ]).collect::<Vec<EntityRef>>();
+    /// let names: Vec<BoxedComponent> = storage.components_take(ComponentId::of::<Name>())
+    ///     .expect("Component is present")
+    ///     .collect::<Vec<BoxedComponent>>();
+    /// assert_eq!(names.len(), 3);
+    /// ```
+    ///
+    pub fn components_take(
+        &mut self,
+        component_id: ComponentId,
+    ) -> Option<impl Iterator<Item = BoxedComponent> + use<'_>> {
+        Some(
+            self.table
+                .remove(&component_id)?
+                .into_iter()
+                .enumerate()
+                .filter_map(|(id, component)| {
+                    if !self.removed_entities.contains(&EntityId(id)) {
+                        component
+                    } else {
+                        None
+                    }
+                }),
+        )
     }
     /// Returns immutable reference to the component of given entity if present.
     ///
@@ -755,7 +719,7 @@ impl EntityComponentStorage {
     ) -> Option<&BoxedComponent> {
         self.table.get(&component_id)?.get(entity_id.0)?.as_ref()
     }
-    /// Returns references to all components of one type.
+    /// Returns immutable references to all components of one type.
     ///
     /// # Example
     /// ```rust
@@ -830,7 +794,7 @@ impl EntityComponentStorage {
             .get_mut(entity_id.0)?
             .as_mut()
     }
-    /// Returns references to all components of one type.
+    /// Returns mutable references to all components of one type.
     ///
     /// # Example
     /// ```rust
@@ -876,6 +840,8 @@ impl EntityComponentStorage {
     }
     /// This function is the `HashMap::get_disjoint_mut` analogue.
     ///
+    /// This method has no typed counterpart, and thus, is only usable through the [`EntityComponentStorage`].
+    ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
@@ -895,7 +861,7 @@ impl EntityComponentStorage {
     ///     bundled_components((NPC, Name("Charlie"))).into_iter()
     /// ]).collect::<Vec<EntityRef>>();
     /// let components: [Vec<&mut BoxedComponent>; 2] = storage.components_disjoint_mut(
-    ///     [&ComponentId::of::<NPC>(), &ComponentId::of::<Name>()]
+    ///     [ComponentId::of::<NPC>(), ComponentId::of::<Name>()]
     /// ).map(|components|
     ///     components.expect("Component is present")
     ///         .collect::<Vec<&mut BoxedComponent>>()
@@ -904,10 +870,10 @@ impl EntityComponentStorage {
     ///
     pub fn components_disjoint_mut<const N: usize>(
         &mut self,
-        component_ids: [&ComponentId; N],
+        component_ids: [ComponentId; N],
     ) -> [Option<impl Iterator<Item = &mut BoxedComponent>>; N] {
         self.table
-            .get_disjoint_mut(component_ids)
+            .get_disjoint_mut(component_ids.each_ref())
             .map(|option_component_column| {
                 option_component_column.map(|component_column| {
                     component_column
