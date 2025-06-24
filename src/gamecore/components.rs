@@ -9,6 +9,7 @@ use std::{
     fmt,
     mem::swap,
 };
+use seq_macro::seq;
 
 /// [`Component`] trait defines objects that are components by ECS terminology.
 ///
@@ -126,7 +127,7 @@ pub type BoxedComponent = Box<dyn Component>;
 /// # Examples
 /// Every [`Component`] is a [`Bundle`], because component is basically a set (bundle) of one component.
 /// Additionally, tuples of bundles are also [`Bundle`]
-/// (with up to 12 items; if you need more, consider implementing your own [`Bundle`]).
+/// (with up to 16 items; if you need more, consider implementing your own [`Bundle`]).
 /// This allows you to combine the necessary components into a [`Bundle`].
 ///
 /// For example defining a `PlayerBundle` containing components that describe the player
@@ -272,8 +273,11 @@ pub type BoxedComponent = Box<dyn Component>;
 ///
 /// Manual implementations (even those that leverage existing implementations) are rather clunky
 /// and susceptible to errors (fairly easy to mistype).
-/// With that in mind, you should either use implementation for tuples or use macros to implement
-/// everything for you.
+/// You can also provide multiple bundle implementations (of different length) to the same structure,
+/// which could be misleading and will prevent Rust from implicitly choosing right implementation
+/// for generic functions.
+/// With that in mind, you should use implementation for tuples
+/// (which is protected by orphan rules from multiple implementations).
 ///
 pub trait Bundle<const N: usize> {
     /// Returns ids of all components that are in the bundle.
@@ -322,7 +326,7 @@ impl<T: Component> Bundle<1> for T {
         [Box::new(self)]
     }
 }
-/// [`impl_bundle`] macro implements [`Bundle`] trait for tuples of arity 12 or less.
+/// [`impl_bundle`] macro implements [`Bundle`] trait for tuples.
 ///
 macro_rules! impl_bundle {
     ($size:tt: $(($t:ident, $index:tt),)*) => {
@@ -336,19 +340,9 @@ macro_rules! impl_bundle {
         }
     };
 }
-impl_bundle!(0:);
-impl_bundle!(1: (T0, 0), );
-impl_bundle!(2: (T0, 0), (T1, 1), );
-impl_bundle!(3: (T0, 0), (T1, 1), (T2, 2), );
-impl_bundle!(4: (T0, 0), (T1, 1), (T2, 2), (T3, 3), );
-impl_bundle!(5: (T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), );
-impl_bundle!(6: (T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), );
-impl_bundle!(7: (T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), );
-impl_bundle!(8: (T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), );
-impl_bundle!(9: (T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8), );
-impl_bundle!(10: (T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8), (T9, 9), );
-impl_bundle!(11: (T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8), (T9, 9), (T10, 10), );
-impl_bundle!(12: (T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8), (T9, 9), (T10, 10), (T11, 11), );
+seq!(SIZE in 0..=16 {
+    #(seq!(N in 0..SIZE { impl_bundle!(SIZE: #((C~N, N),)*); });)*
+});
 
 /// [`Resource`] trait defines unique global data that is bounded to the `Scene`.
 ///
