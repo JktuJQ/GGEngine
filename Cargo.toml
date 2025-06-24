@@ -29,6 +29,9 @@ features = ["mixer", "image", "ttf"]
 [dependencies.bitflags]
 version = "*"
 
+[dependencies.seq-macro]
+version = "*"
+
 [dependencies.serde]
 version = "1.*"
 features = ["derive"]
