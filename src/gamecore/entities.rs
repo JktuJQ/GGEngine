@@ -3,7 +3,7 @@
 //!
 
 use crate::gamecore::{
-    components::{bundled_components, Bundle, Component, ComponentId, Downcastable},
+    components::{bundled_components, Bundle, Component, ComponentId, Downcast},
     storages::EntityComponentStorage,
 };
 use std::hash::{Hash, Hasher};

@@ -38,11 +38,11 @@ use crate::{
     datacore::images::Image,
     graphicscore::{
         textures::{AccessType, Texture, TextureCreator},
-        {Blendable, BlendingType},
+        {Blend, BlendingType},
     },
     mathcore::{
-        shapes::{PolygonLike, Rect, Segment},
-        transforms::{Rotatable, Scalable, Translatable},
+        shapes::{PolygonShape, Rect, Segment},
+        transforms::{Rotate, Scale, Translate},
         vectors::Point,
         Color,
     },
@@ -61,7 +61,7 @@ use std::fmt;
 /// Every canvas allows drawing graphical primitives (points, lines, polygons) with selected color,
 /// pasting textures into canvas.
 ///
-/// This trait requires [`Blendable`] trait to be implemented.
+/// This trait requires [`Blend`] trait to be implemented.
 ///
 /// # Example
 /// ```rust, no_run
@@ -119,7 +119,7 @@ use std::fmt;
 /// image.to_file("image.png").expect("File creation or truncation should not fail");
 /// ```
 ///
-pub trait Canvas<'a>: Blendable {
+pub trait Canvas<'a>: Blend {
     /// Sets new drawing color to the canvas.
     ///
     /// This will affect color of graphical primitives that are drawn and
@@ -188,14 +188,14 @@ pub trait Canvas<'a>: Blendable {
         src_area: Option<Rect>,
     );
 }
-/// [`impl_canvas`] macro implements [`Blendable`] and [`Canvas`] traits
+/// [`impl_canvas`] macro implements [`Blend`] and [`Canvas`] traits
 /// for [`WindowCanvas`], [`TextureCanvas`] and [`ImageCanvas`].
 ///
 /// Canvas must have `canvas` field.
 ///
 macro_rules! impl_canvas {
     ($struct:ty, $texture_creator_fn:path) => {
-        impl<'a> Blendable for $struct {
+        impl<'a> Blend for $struct {
             fn set_blend_mode(&mut self, blend_mode: BlendingType) {
                 self.canvas.set_blend_mode(blend_mode.to_sdl_blend_mode());
             }

@@ -158,10 +158,10 @@ impl Transform {
     }
 }
 
-/// [`Translatable`] trait defines properties of translatable objects (objects that can be moved
+/// [`Translate`] trait defines properties of translatable objects (objects that can be moved
 /// across plane).
 ///
-pub trait Translatable {
+pub trait Translate {
     /// Returns origin point (position of object).
     ///
     fn origin(&self) -> Point;
@@ -175,13 +175,13 @@ pub trait Translatable {
         self.translate_on(point - self.origin());
     }
 }
-/// [`Rotatable`] trait defines properties of rotating objects.
+/// [`Rotate`] trait defines properties of rotating objects.
 ///
 /// Rotation should be performed on counterclockwise direction (`Transform::ROTATION` matrix supplies it),
 /// although on screen it would appear as clockwise (since y-axis is directed down). That suggests
 /// that implementation of this trait should be using `Transform::ROTATION` matrix to be uniform relating to other objects.
 ///
-pub trait Rotatable {
+pub trait Rotate {
     /// Returns current angle.
     ///
     fn angle(&self) -> Angle;
@@ -195,9 +195,9 @@ pub trait Rotatable {
         self.rotate_on(angle - self.angle());
     }
 }
-/// [`Scalable`] trait defines properties of scalable objects (objects that can be resized).
+/// [`Scale`] trait defines properties of scalable objects (objects that can be resized).
 ///
-pub trait Scalable {
+pub trait Scale {
     /// Returns current size.
     ///
     fn size(&self) -> (Size, Size);
@@ -212,10 +212,3 @@ pub trait Scalable {
         self.scale((size.0 / x, size.1 / y));
     }
 }
-/// [`Transformable`] super-trait defines properties of transformable object.
-///
-/// This trait requires [`Translatable`], [`Rotatable`] and [`Scalable`] traits to be implemented.
-/// This trait is automatically implemented if possible.
-///
-pub trait Transformable: Translatable + Rotatable + Scalable {}
-impl<T: Translatable + Rotatable + Scalable> Transformable for T {}

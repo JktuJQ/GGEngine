@@ -108,9 +108,9 @@ impl BlendingType {
     }
 }
 
-/// [`Blendable`] trait is implemented on structs that support blending.
+/// [`Blend`] trait is implemented on structs that support blending.
 ///
-pub trait Blendable {
+pub trait Blend {
     /// Sets new blending mode for blendable object.
     ///
     fn set_blend_mode(&mut self, blend_mode: BlendingType);
@@ -118,7 +118,7 @@ pub trait Blendable {
     ///
     fn blend_mode(&self) -> BlendingType;
 }
-impl Blendable for Image<'_> {
+impl Blend for Image<'_> {
     fn set_blend_mode(&mut self, blend_mode: BlendingType) {
         self.get_sdl_surface_mut()
             .set_blend_mode(blend_mode.to_sdl_blend_mode())
@@ -128,7 +128,7 @@ impl Blendable for Image<'_> {
         BlendingType::from_sdl_blend_mode(self.get_sdl_surface().blend_mode())
     }
 }
-impl Blendable for Texture<'_> {
+impl Blend for Texture<'_> {
     fn set_blend_mode(&mut self, blend_mode: BlendingType) {
         self.get_sdl_texture_mut()
             .set_blend_mode(blend_mode.to_sdl_blend_mode())
@@ -138,11 +138,11 @@ impl Blendable for Texture<'_> {
     }
 }
 
-/// [`ColorModulatable`] trait is implemented on structs that support color modulation.
+/// [`ColorModulation`] trait is implemented on structs that support color modulation.
 ///
 /// Color modulation is similar to blending, but it is applied only to source pixel color (`src = src * (color / 255)`).
 ///
-pub trait ColorModulatable {
+pub trait ColorModulation {
     /// Sets new color modulation for modulatable objects.
     ///
     fn set_color_modulation(&mut self, color: Color);
@@ -150,7 +150,7 @@ pub trait ColorModulatable {
     ///
     fn color_modulation(&self) -> Color;
 }
-impl ColorModulatable for Image<'_> {
+impl ColorModulation for Image<'_> {
     fn set_color_modulation(&mut self, color: Color) {
         self.get_sdl_surface_mut()
             .set_color_mod(SdlColor::from(color.to_rgba()))
@@ -160,7 +160,7 @@ impl ColorModulatable for Image<'_> {
         Color::from_rgba(r, g, b, a)
     }
 }
-impl ColorModulatable for Texture<'_> {
+impl ColorModulation for Texture<'_> {
     fn set_color_modulation(&mut self, color: Color) {
         let (r, g, b, a) = color.to_rgba();
 

@@ -4,7 +4,7 @@
 
 use crate::gamecore::components::ComponentId;
 use crate::gamecore::{
-    components::{bundled_components, Bundle, Component, Downcastable, Resource, ResourceId},
+    components::{bundled_components, Bundle, Component, Downcast, Resource, ResourceId},
     entities::{EntityId, EntityMut, EntityRef},
     storages::{EntityComponentStorage, ResourceStorage},
 };

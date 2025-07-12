@@ -3,7 +3,7 @@
 
 use crate::mathcore::{
     floats::{almost_equal, FloatOperations},
-    transforms::{Rotatable, Scalable, Transform, Transformable, Translatable},
+    transforms::{Rotate, Scale, Transform, Translate},
     vectors::{Point, Vector2, Vertex},
     {Angle, Sign, Size},
 };
@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 
 /// [`Segment`] struct represents two-dimensional line segment.
 ///
-/// This struct is not an implementor of [`Shape`] traits because most of associated functions make
-/// no sense for line segment (e.g. `perimeter` and `area` from [`Shape`], `scale` and `set_size` from [`Scalable`]).
-/// Transform traits that are implemented ([`Translatable`] and [`Rotatable`]) supply comments on
+/// This struct is not an implementor of [`Shape`] trait because most of associated functions make
+/// no sense for line segment (e.g. `perimeter` and `area` from [`Shape`], `scale` and `set_size` from [`Scale`]).
+/// Transform traits that are implemented ([`Translate`] and [`Rotate`]) supply comments on
 /// what is considered origin and angle of a line segment.
 ///
 /// `Segment.point1` is considered as base, so that the slope is defined as
@@ -119,7 +119,7 @@ impl FloatOperations for Segment {
         }
     }
 }
-impl Translatable for Segment {
+impl Translate for Segment {
     /// For a line segment, origin is a midpoint.
     ///
     fn origin(&self) -> Point {
@@ -131,7 +131,7 @@ impl Translatable for Segment {
         self.point2 += vector;
     }
 }
-impl Rotatable for Segment {
+impl Rotate for Segment {
     /// For a line segment, angle is inclination angle of a line that contains line segment.
     ///
     fn angle(&self) -> Angle {
@@ -155,7 +155,7 @@ impl Rotatable for Segment {
 
 /// [`Shape`] trait defines two-dimensional shape on a plane which can be transformed.
 ///
-pub trait Shape: Transformable {
+pub trait Shape: Translate + Rotate + Scale {
     /// Returns perimeter of a shape.
     ///
     fn perimeter(&self) -> f32;
@@ -167,9 +167,9 @@ pub trait Shape: Transformable {
     ///
     fn contains_point(&self, point: Point) -> bool;
 }
-/// [`PolygonLike`] trait defines shapes that can be represented by a list of vertices.
+/// [`PolygonShape`] trait defines shapes that can be represented by a list of vertices (polygons).
 ///
-pub trait PolygonLike: Shape {
+pub trait PolygonShape: Shape {
     /// Returns shared slice with polygon's vertices.
     ///
     fn vertices(&self) -> &[Vertex];
@@ -192,11 +192,12 @@ pub trait PolygonLike: Shape {
         edges
     }
 }
-/// Implements `Shape::contains_point` method for struct that implements `PolygonLike` trait.
+/// Implements `Shape::contains_point` method for struct that implements [`PolygonShape`] trait.
 ///
-macro_rules! impl_contains_point_for_polygonlike {
+macro_rules! impl_contains_point_for_polygonshape {
     () => {
-        /// Returns whether polygon contains point or not. Polygon contains point even in cases where point lies on its edge.
+        /// Returns whether polygon contains point or not.
+        /// Polygon contains point even in cases where point lies on its edge.
         ///
         fn contains_point(&self, point: Point) -> bool {
             let between = |p: f32, a: f32, b: f32| p >= a.min(b) && p <= a.max(b);
@@ -237,16 +238,16 @@ macro_rules! impl_contains_point_for_polygonlike {
         }
     };
 }
-/// [`Convex`] mark trait defines polygons which are convex (every internal angle is strictly less than 180 degrees).
+/// [`Convex`] marker trait defines polygons which are convex (every internal angle is strictly less than 180 degrees).
 ///
-pub trait Convex: PolygonLike {}
+pub trait Convex: PolygonShape {}
 
 /// [`Rect`] struct represents transformable two-dimensional rectangle on a surface.
 ///
 /// # Examples
 /// ### Initialization
 /// ```rust
-/// # use ggengine::mathcore::shapes::{Rect, Shape, PolygonLike};
+/// # use ggengine::mathcore::shapes::{Rect, Shape, PolygonShape};
 /// # use ggengine::mathcore::vectors::{Vector2, Vertex, Point};
 /// # use ggengine::mathcore::{Angle, Size};
 /// let mut rect: Rect = Rect::from_origin(
@@ -270,8 +271,8 @@ pub trait Convex: PolygonLike {}
 ///
 /// ### Translation
 /// ```rust
-/// # use ggengine::mathcore::shapes::{Rect, Shape, PolygonLike};
-/// # use ggengine::mathcore::transforms::Translatable;
+/// # use ggengine::mathcore::shapes::{Rect, Shape, PolygonShape};
+/// # use ggengine::mathcore::transforms::Translate;
 /// # use ggengine::mathcore::vectors::{Vector2, Vertex, Point};
 /// # use ggengine::mathcore::{Angle, Size};
 /// let mut rect: Rect = Rect::from_origin(
@@ -293,8 +294,8 @@ pub trait Convex: PolygonLike {}
 ///
 /// ### Rotation
 /// ```rust
-/// # use ggengine::mathcore::shapes::{Rect, Shape, PolygonLike};
-/// # use ggengine::mathcore::transforms::Rotatable;
+/// # use ggengine::mathcore::shapes::{Rect, Shape, PolygonShape};
+/// # use ggengine::mathcore::transforms::Rotate;
 /// # use ggengine::mathcore::vectors::{Vector2, Vertex, Point};
 /// # use ggengine::mathcore::{Angle, Size};
 /// # use ggengine::mathcore::floats::FloatOperations;
@@ -317,8 +318,8 @@ pub trait Convex: PolygonLike {}
 ///
 /// ### Scaling
 /// ```rust
-/// # use ggengine::mathcore::shapes::{Rect, Shape, PolygonLike};
-/// # use ggengine::mathcore::transforms::Scalable;
+/// # use ggengine::mathcore::shapes::{Rect, Shape, PolygonShape};
+/// # use ggengine::mathcore::transforms::Scale;
 /// # use ggengine::mathcore::vectors::{Vector2, Vertex, Point};
 /// # use ggengine::mathcore::{Angle, Size};
 /// let mut rect: Rect = Rect::from_origin(
@@ -406,8 +407,8 @@ impl Rect {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::mathcore::shapes::{Rect, Shape, PolygonLike};
-    /// # use ggengine::mathcore::transforms::{Rotatable};
+    /// # use ggengine::mathcore::shapes::{Rect, Shape, PolygonShape};
+    /// # use ggengine::mathcore::transforms::{Rotate};
     /// # use ggengine::mathcore::vectors::{Vector2, Vertex, Point};
     /// # use ggengine::mathcore::floats::FloatOperations;
     /// # use ggengine::mathcore::{Angle, Size};
@@ -448,15 +449,15 @@ impl Shape for Rect {
         self.width() * self.height()
     }
 
-    impl_contains_point_for_polygonlike!();
+    impl_contains_point_for_polygonshape!();
 }
-impl PolygonLike for Rect {
+impl PolygonShape for Rect {
     fn vertices(&self) -> &[Vertex] {
         &self.vertices
     }
 }
 impl Convex for Rect {}
-impl Translatable for Rect {
+impl Translate for Rect {
     fn origin(&self) -> Point {
         self.origin
     }
@@ -469,7 +470,7 @@ impl Translatable for Rect {
             .for_each(|vertex| *vertex += vector);
     }
 }
-impl Rotatable for Rect {
+impl Rotate for Rect {
     fn angle(&self) -> Angle {
         self.angle
     }
@@ -494,7 +495,7 @@ impl Rotatable for Rect {
             .for_each(|vertex| *vertex = transform_matrix.apply_to(*vertex));
     }
 }
-impl Scalable for Rect {
+impl Scale for Rect {
     fn size(&self) -> (Size, Size) {
         self.size
     }
@@ -525,7 +526,7 @@ impl Scalable for Rect {
 mod tests {
     use crate::mathcore::{
         shapes::Segment,
-        transforms::{Rotatable, Translatable},
+        transforms::{Rotate, Translate},
         vectors::{Point, Vector2},
         Angle,
     };
@@ -573,8 +574,8 @@ mod tests {
 
     #[test]
     fn rect2d() {
-        use super::{PolygonLike, Rect};
-        use crate::mathcore::{transforms::Scalable, Size};
+        use super::{PolygonShape, Rect};
+        use crate::mathcore::{transforms::Scale, Size};
 
         let mut rect1 = Rect::from_origin(
             Point { x: 1.0, y: 1.0 },

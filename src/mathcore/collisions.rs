@@ -185,7 +185,7 @@ impl<S1: Convex, S2: Convex> CollisionSystem<S1, S2> for DiagonalsSystem {
 mod tests {
     use super::CollisionSystem;
     use crate::mathcore::{
-        shapes::{PolygonLike, Rect},
+        shapes::{PolygonShape, Rect},
         vectors::{Point, Vertex},
         {Angle, Size},
     };

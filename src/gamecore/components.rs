@@ -411,7 +411,7 @@ impl ResourceId {
 ///
 pub type BoxedResource = Box<dyn Resource>;
 
-/// [`Downcastable`] trait allows [`Component`]s and [`Resource`]s
+/// [`Downcast`] trait allows [`Component`]s and [`Resource`]s
 /// to be downcasted to concrete types from behind `dyn` + indirection.
 ///
 /// Ideally this functionality would be implemented with a bunch of independent functions,
@@ -431,7 +431,7 @@ pub type BoxedResource = Box<dyn Resource>;
 ///
 /// # Example
 /// ```rust
-/// # use ggengine::gamecore::components::{Resource, ResourceId, BoxedResource, Downcastable};
+/// # use ggengine::gamecore::components::{Resource, ResourceId, BoxedResource, Downcast};
 /// struct Score(u32);
 /// impl Resource for Score {}
 ///
@@ -440,7 +440,7 @@ pub type BoxedResource = Box<dyn Resource>;
 /// assert_eq!(score.0, 10);
 /// ```
 ///
-pub trait Downcastable {
+pub trait Downcast {
     /// Method that coerces `Box<Self>` to `T`.
     ///
     fn downcast_to_value<T: Any>(self: Box<Self>) -> Result<T, Box<dyn Any>>;
@@ -451,7 +451,7 @@ pub trait Downcastable {
     ///
     fn downcast_to_mut<T: Any>(&mut self) -> Option<&mut T>;
 }
-impl Downcastable for dyn Component {
+impl Downcast for dyn Component {
     fn downcast_to_value<T: Any>(self: Box<Self>) -> Result<T, Box<dyn Any>> {
         let as_any: Box<dyn Any> = self;
         as_any.downcast::<T>().map(|boxed| *boxed)
@@ -465,7 +465,7 @@ impl Downcastable for dyn Component {
         as_any.downcast_mut::<T>()
     }
 }
-impl Downcastable for dyn Resource {
+impl Downcast for dyn Resource {
     fn downcast_to_value<T: Any>(self: Box<Self>) -> Result<T, Box<dyn Any>> {
         let as_any: Box<dyn Any> = self;
         as_any.downcast::<T>().map(|boxed| *boxed)
