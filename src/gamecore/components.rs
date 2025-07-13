@@ -71,6 +71,48 @@ use seq_macro::seq;
 /// ```
 ///
 pub trait Component: Any {}
+/// Type alias for `Box<dyn Component>`.
+///
+/// This type alias will be frequently used in situations in which
+/// ownership of components is needed.
+///
+/// `Box<dyn Component>` also allows combining multiple different [`Component`]s in one structure
+/// (`Vec`, iterator, etc.).
+///
+pub type BoxedComponent = Box<dyn Component>;
+impl dyn Component {
+    /// Returns true if the inner type is the same as `C`.
+    ///
+    pub fn is<C: Component>(&self) -> bool {
+        let as_any: &dyn Any = self;
+        as_any.is::<C>()
+    }
+
+    /// Attempts to downcast the box to a concrete type.
+    ///
+    /// # Note
+    /// `downcast` consumes initial `Box`,
+    /// but on failure it does not need to, and so it returns it in upcasted form (`Box<dyn Any>`).
+    /// Although it would be preferrable to return initial type (`Box<dyn Resource>`),
+    /// it is impossible to do so.
+    ///
+    pub fn downcast<C: Component>(self: Box<Self>) -> Result<Box<C>, Box<dyn Any>> {
+        let as_any: Box<dyn Any> = self;
+        as_any.downcast::<C>()
+    }
+    /// Returns some reference to the inner value if it is of type `C`, or `None` if it isn’t.
+    ///
+    pub fn downcast_ref<C: Component>(&self) -> Option<&C> {
+        let as_any: &dyn Any = self;
+        as_any.downcast_ref::<C>()
+    }
+    /// Returns some mutable reference to the inner value if it is of type `C`, or `None` if it isn’t.
+    ///
+    pub fn downcast_mut<C: Component>(&mut self) -> Option<&mut C> {
+        let as_any: &mut dyn Any = self;
+        as_any.downcast_mut::<C>()
+    }
+}
 impl fmt::Debug for dyn Component {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", type_name::<Self>())
@@ -102,15 +144,6 @@ impl ComponentId {
         ComponentId(TypeId::of::<C>())
     }
 }
-/// Type alias for `Box<dyn Component>`.
-///
-/// This type alias will be frequently used in situations in which
-/// ownership of components is needed.
-///
-/// `Box<dyn Component>` also allows combining multiple different [`Component`]s in one structure
-/// (`Vec`, iterator, etc.).
-///
-pub type BoxedComponent = Box<dyn Component>;
 
 /// [`Bundle`] trait defines a static set of [`Component`]s.
 ///
@@ -297,14 +330,16 @@ pub trait Bundle<const N: usize> {
 /// When [`Bundle`] is used, most of the time both the [`ComponentId`] and the [`BoxedComponent`]
 /// are needed; this type alias is specifically for those situations.
 ///
-/// `bundled_components` function expresses that need - check docs for more information.
+/// [`bundled_components`] function expresses that need - check docs for more information.
 ///
 pub type BundledComponent = (ComponentId, BoxedComponent);
-/// `bundled_components` function zips two iterators of [`Bundle`] together.
+/// [`bundled_components`] function zips two arrays of [`Bundle`] together.
 ///
-/// Although functionality of [`Bundle`] is splitted in two functions
+/// Although functionality of [`Bundle`] is split in two functions
 /// (`Bundle::component_ids` does not require `self`, which allows operating on [`Bundle`]s as on types),
-/// it is still common to use those two iterators simultaneously, which could be done through this function.
+/// it is still common to use those two arrays simultaneously, which could be done through this function.
+///
+/// If you only need an `Iterator` that is a result of a zip, manual zipping would be faster.
 ///
 pub fn bundled_components<B: Bundle<N>, const N: usize>(bundle: B) -> [BundledComponent; N] {
     struct NoOpComponent;
@@ -371,6 +406,48 @@ seq!(SIZE in 0..=16 {
 /// To further understand relations between those traits, it is encouraged to read docs for submodule items.
 ///
 pub trait Resource: Any {}
+/// Type alias for `Box<dyn Resource>`.
+///
+/// This type alias will be frequently used in situations in which
+/// ownership of resource is needed.
+///
+/// `Box<dyn Resource>` also allows combining multiple different [`Resource`]s in one structure
+/// (`Vec`, iterator, etc.).
+///
+pub type BoxedResource = Box<dyn Resource>;
+impl dyn Resource {
+    /// Returns true if the inner type is the same as `R`.
+    ///
+    pub fn is<R: Resource>(&self) -> bool {
+        let as_any: &dyn Any = self;
+        as_any.is::<R>()
+    }
+
+    /// Attempts to downcast the box to a concrete type.
+    ///
+    /// # Note
+    /// `downcast` consumes initial `Box`,
+    /// but on failure it does not need to, and so it returns it in upcasted form (`Box<dyn Any>`).
+    /// Although it would be preferrable to return initial type (`Box<dyn Resource>`),
+    /// it is impossible to do so.
+    ///
+    pub fn downcast<R: Resource>(self: Box<Self>) -> Result<Box<R>, Box<dyn Any>> {
+        let as_any: Box<dyn Any> = self;
+        as_any.downcast::<R>()
+    }
+    /// Returns some reference to the inner value if it is of type `R`, or `None` if it isn’t.
+    ///
+    pub fn downcast_ref<R: Resource>(&self) -> Option<&R> {
+        let as_any: &dyn Any = self;
+        as_any.downcast_ref::<R>()
+    }
+    /// Returns some mutable reference to the inner value if it is of type `R`, or `None` if it isn’t.
+    ///
+    pub fn downcast_mut<R: Resource>(&mut self) -> Option<&mut R> {
+        let as_any: &mut dyn Any = self;
+        as_any.downcast_mut::<R>()
+    }
+}
 impl fmt::Debug for dyn Resource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", type_name::<Self>())
@@ -399,83 +476,5 @@ impl ResourceId {
     ///
     pub fn of<R: Resource>() -> Self {
         ResourceId(TypeId::of::<R>())
-    }
-}
-/// Type alias for `Box<dyn Resource>`.
-///
-/// This type alias will be frequently used in situations in which
-/// ownership of resource is needed.
-///
-/// `Box<dyn Resource>` also allows combining multiple different [`Resource`]s in one structure
-/// (`Vec`, iterator, etc.).
-///
-pub type BoxedResource = Box<dyn Resource>;
-
-/// [`Downcast`] trait allows [`Component`]s and [`Resource`]s
-/// to be downcasted to concrete types from behind `dyn` + indirection.
-///
-/// Ideally this functionality would be implemented with a bunch of independent functions,
-/// but that is impossible to do generically
-/// since `Box<T>` where `T: ?Sized` is not `Sized` itself, and thus cannot be cast to `Any`.
-///
-/// Concrete implementations of this trait on `dyn Component` and `dyn Resource`
-/// (which is all that is needed anyway) allow doing that conversion.
-///
-/// # Note
-/// `downcast_to_value` consumes initial `Box`,
-/// but on failure it does not need to, and so it returns it in upcasted form (`Box<dyn Any>`).
-/// Although it would be preferrable to return initial type, it is impossible to do so from trait.
-///
-/// `ggengine` always uses this function in a context where conversion cannot fail and
-/// that makes this issue practically non-existent.
-///
-/// # Example
-/// ```rust
-/// # use ggengine::gamecore::components::{Resource, ResourceId, BoxedResource, Downcast};
-/// struct Score(u32);
-/// impl Resource for Score {}
-///
-/// let boxed_score: BoxedResource = Box::new(Score(10));
-/// let score: &Score = boxed_score.downcast_to_ref::<Score>().expect("This type should correspond to this value");
-/// assert_eq!(score.0, 10);
-/// ```
-///
-pub trait Downcast {
-    /// Method that coerces `Box<Self>` to `T`.
-    ///
-    fn downcast_to_value<T: Any>(self: Box<Self>) -> Result<T, Box<dyn Any>>;
-    /// Method that coerces `&Self` to `&T`.
-    ///
-    fn downcast_to_ref<T: Any>(&self) -> Option<&T>;
-    /// Method that coerces `&mut Self` to `&mut T`.
-    ///
-    fn downcast_to_mut<T: Any>(&mut self) -> Option<&mut T>;
-}
-impl Downcast for dyn Component {
-    fn downcast_to_value<T: Any>(self: Box<Self>) -> Result<T, Box<dyn Any>> {
-        let as_any: Box<dyn Any> = self;
-        as_any.downcast::<T>().map(|boxed| *boxed)
-    }
-    fn downcast_to_ref<T: Any>(&self) -> Option<&T> {
-        let as_any: &dyn Any = self;
-        as_any.downcast_ref::<T>()
-    }
-    fn downcast_to_mut<T: Any>(&mut self) -> Option<&mut T> {
-        let as_any: &mut dyn Any = self;
-        as_any.downcast_mut::<T>()
-    }
-}
-impl Downcast for dyn Resource {
-    fn downcast_to_value<T: Any>(self: Box<Self>) -> Result<T, Box<dyn Any>> {
-        let as_any: Box<dyn Any> = self;
-        as_any.downcast::<T>().map(|boxed| *boxed)
-    }
-    fn downcast_to_ref<T: Any>(&self) -> Option<&T> {
-        let as_any: &dyn Any = self;
-        as_any.downcast_ref::<T>()
-    }
-    fn downcast_to_mut<T: Any>(&mut self) -> Option<&mut T> {
-        let as_any: &mut dyn Any = self;
-        as_any.downcast_mut::<T>()
     }
 }

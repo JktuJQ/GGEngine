@@ -3,7 +3,7 @@
 //!
 
 use crate::gamecore::{
-    components::{bundled_components, Bundle, Component, ComponentId, Downcast},
+    components::{bundled_components, Bundle, Component, ComponentId},
     storages::EntityComponentStorage,
 };
 use std::hash::{Hash, Hasher};
@@ -115,7 +115,7 @@ impl EntityRef<'_> {
             .component(self.entity_id, ComponentId::of::<C>())
             .map(|component_ref| {
                 component_ref
-                    .downcast_to_ref::<C>()
+                    .downcast_ref::<C>()
                     .expect("This type should correspond to this value")
             })
     }
@@ -212,9 +212,9 @@ impl EntityMut<'_> {
         self.entity_component_storage
             .insert_component(self.entity_id, ComponentId::of::<C>(), Box::new(component))
             .map(|boxed_component| {
-                boxed_component
-                    .downcast_to_value::<C>()
-                    .expect("This type should correspond to this value")
+                *(boxed_component
+                    .downcast::<C>()
+                    .expect("This type should correspond to this value"))
             })
     }
     /// Inserts bundle of components into entity.
@@ -264,9 +264,9 @@ impl EntityMut<'_> {
         self.entity_component_storage
             .remove_component(self.entity_id, ComponentId::of::<C>())
             .map(|boxed_component| {
-                boxed_component
-                    .downcast_to_value::<C>()
-                    .expect("This type should correspond to this value")
+                *(boxed_component
+                    .downcast::<C>()
+                    .expect("This type should correspond to this value"))
             })
     }
     /// Removes all components from entity.
@@ -371,7 +371,7 @@ impl EntityMut<'_> {
             .component(self.entity_id, ComponentId::of::<C>())
             .map(|boxed_component| {
                 boxed_component
-                    .downcast_to_ref::<C>()
+                    .downcast_ref::<C>()
                     .expect("This type should correspond to this value")
             })
     }
@@ -400,7 +400,7 @@ impl EntityMut<'_> {
             .component_mut(self.entity_id, ComponentId::of::<C>())
             .map(|component_mut| {
                 component_mut
-                    .downcast_to_mut::<C>()
+                    .downcast_mut::<C>()
                     .expect("This type should correspond to this value")
             })
     }
@@ -430,7 +430,7 @@ impl EntityMut<'_> {
     pub fn get_or_insert_with<C: Component>(&mut self, f: impl FnOnce() -> C) -> &mut C {
         self.entity_component_storage
             .component_get_or_insert_with(self.entity_id, ComponentId::of::<C>(), || Box::new(f()))
-            .downcast_to_mut::<C>()
+            .downcast_mut::<C>()
             .expect("This type should correspond to this value")
     }
 }

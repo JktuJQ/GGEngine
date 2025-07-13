@@ -4,7 +4,7 @@
 
 use crate::gamecore::components::ComponentId;
 use crate::gamecore::{
-    components::{bundled_components, Bundle, Component, Downcast, Resource, ResourceId},
+    components::{bundled_components, Bundle, Component, Resource, ResourceId},
     entities::{EntityId, EntityMut, EntityRef},
     storages::{EntityComponentStorage, ResourceStorage},
 };
@@ -281,9 +281,9 @@ impl Scene {
             .components_take(ComponentId::of::<C>())
             .map(|components| {
                 components.map(|component| {
-                    component
-                        .downcast_to_value::<C>()
-                        .expect("This type should correspond to this value")
+                    *(component
+                        .downcast::<C>()
+                        .expect("This type should correspond to this value"))
                 })
             })
     }
@@ -319,7 +319,7 @@ impl Scene {
             .map(|components| {
                 components.map(|component| {
                     component
-                        .downcast_to_ref::<C>()
+                        .downcast_ref::<C>()
                         .expect("This type should correspond to this value")
                 })
             })
@@ -356,7 +356,7 @@ impl Scene {
             .map(|components| {
                 components.map(|component| {
                     component
-                        .downcast_to_mut::<C>()
+                        .downcast_mut::<C>()
                         .expect("This type should correspond to this value")
                 })
             })
@@ -386,9 +386,9 @@ impl Scene {
         self.resource_storage
             .insert_resource(ResourceId::of::<R>(), Box::new(value))
             .map(|boxed_resource| {
-                boxed_resource
-                    .downcast_to_value::<R>()
-                    .expect("This type corresponds to this value.")
+                *(boxed_resource
+                    .downcast::<R>()
+                    .expect("This type corresponds to this value."))
             })
     }
     /// Removes the resource of a given type and returns it if present.
@@ -411,9 +411,9 @@ impl Scene {
         self.resource_storage
             .remove_resource(ResourceId::of::<R>())
             .map(|boxed_resource| {
-                boxed_resource
-                    .downcast_to_value::<R>()
-                    .expect("This type corresponds to this value.")
+                *(boxed_resource
+                    .downcast::<R>()
+                    .expect("This type corresponds to this value."))
             })
     }
     /// Returns whether a resource of given type exists or not.
@@ -460,7 +460,7 @@ impl Scene {
             .resource(ResourceId::of::<R>())
             .map(|resource_ref| {
                 resource_ref
-                    .downcast_to_ref::<R>()
+                    .downcast_ref::<R>()
                     .expect("This type corresponds to this value")
             })
     }
@@ -486,7 +486,7 @@ impl Scene {
             .resource_mut(ResourceId::of::<R>())
             .map(|resource_mut| {
                 resource_mut
-                    .downcast_to_mut::<R>()
+                    .downcast_mut::<R>()
                     .expect("This type corresponds to this value")
             })
     }
@@ -510,7 +510,7 @@ impl Scene {
     pub fn resource_get_or_insert_with<R: Resource>(&mut self, f: impl FnOnce() -> R) -> &mut R {
         self.resource_storage
             .resource_get_or_insert_with(ResourceId::of::<R>(), || Box::new(f()))
-            .downcast_to_mut::<R>()
+            .downcast_mut::<R>()
             .expect("This type corresponds to this value.")
     }
 }
