@@ -3,13 +3,13 @@
 //! and implements several basic components used in games.
 //!
 
+use seq_macro::seq;
 use std::{
     any::{type_name, Any, TypeId},
     array::from_fn,
     fmt,
     mem::swap,
 };
-use seq_macro::seq;
 
 /// [`Component`] trait defines objects that are components by ECS terminology.
 ///
@@ -365,7 +365,10 @@ impl<T: Component> Bundle<1> for T {
 ///
 macro_rules! impl_bundle {
     ($size:tt: $(($t:ident, $index:tt),)*) => {
-        impl<$($t: Component,)*> Bundle<$size> for ($($t,)*) {
+        impl<$($t,)*> Bundle<$size> for ($($t,)*)
+        where
+            $($t: Component,)*
+        {
             fn component_ids() -> [ComponentId; $size] {
                 [$(ComponentId::of::<$t>(),)*]
             }

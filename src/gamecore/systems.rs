@@ -8,7 +8,10 @@ use crate::gamecore::{
     storages::{EntityComponentStorage, ResourceStorage},
 };
 use seq_macro::seq;
-use std::{any::{TypeId, Any}, marker::PhantomData};
+use std::{
+    any::{Any, TypeId},
+    marker::PhantomData,
+};
 
 struct ComponentMarker;
 struct ResourceMarker;
@@ -80,10 +83,31 @@ pub trait PreparedSystem {
 }
 pub type BoxedPreparedSystem = Box<dyn PreparedSystem>;
 
-pub struct BareSystem<F: for<'scene> FnMut(&'scene mut Scene) -> () + 'static>(pub F);
+pub struct BareSystem<F>
+where
+    F: for<'scene> FnMut(&'scene mut Scene) -> () + 'static,
+{
+    system: F,
+}
+impl<F> BareSystem<F>
+where
+    F: for<'scene> FnMut(&'scene mut Scene) -> () + 'static,
+{
+    pub fn new(system: F) -> BareSystem<F> {
+        BareSystem { system }
+    }
+}
+impl<F> From<F> for BareSystem<F>
+where
+    F: for<'scene> FnMut(&'scene mut Scene) -> () + 'static,
+{
+    fn from(value: F) -> Self {
+        BareSystem { system: value }
+    }
+}
 impl<F> PrepareSystem for BareSystem<F>
 where
-    F: for<'scene> FnMut(&'scene mut Scene) -> () + 'static
+    F: for<'scene> FnMut(&'scene mut Scene) -> () + 'static,
 {
     fn prepare(self) -> Result<impl PreparedSystem, SystemPreparationError> {
         Ok(self)
@@ -91,22 +115,23 @@ where
 }
 impl<F> PreparedSystem for BareSystem<F>
 where
-    F: for<'scene> FnMut(&'scene mut Scene) -> () + 'static
+    F: for<'scene> FnMut(&'scene mut Scene) -> () + 'static,
 {
     fn id(&self) -> SystemId {
-        SystemId(self.0.type_id())
+        SystemId(self.system.type_id())
     }
 
     fn run(&mut self, scene: &mut Scene) {
-        self.0(scene)
+        (self.system)(scene)
     }
 }
 
-pub struct System<
+pub struct System<F, C, R>
+where
     F: for<'scene> FnMut(Components<'scene, C>, Resources<'scene, R>) -> () + 'static,
     C: ComponentQueries,
     R: SceneData<ResourceMarker>,
-> {
+{
     system: F,
     _markers: PhantomData<(C, R)>,
 }
@@ -114,12 +139,12 @@ impl<F, C, R> System<F, C, R>
 where
     F: for<'scene> FnMut(Components<'scene, C>, Resources<'scene, R>) -> () + 'static,
     C: ComponentQueries,
-    R: SceneData<ResourceMarker>
+    R: SceneData<ResourceMarker>,
 {
-    pub fn new(f: F) -> Self {
+    pub fn new(system: F) -> Self {
         System {
-            system: f,
-            _markers: PhantomData
+            system,
+            _markers: PhantomData,
         }
     }
 }
@@ -147,11 +172,12 @@ where
         Ok(PreparedSystemWrapper::from(self))
     }
 }
-struct PreparedSystemWrapper<
+struct PreparedSystemWrapper<F, C, R>
+where
     F: for<'scene> FnMut(Components<'scene, C>, Resources<'scene, R>) -> () + 'static,
     C: ComponentQueries,
     R: SceneData<ResourceMarker>,
-> {
+{
     system: F,
     _markers: PhantomData<(C, R)>,
 }
@@ -177,7 +203,7 @@ where
     fn id(&self) -> SystemId {
         SystemId(self.system.type_id())
     }
-    
+
     fn run(&mut self, scene: &mut Scene) {
         (self.system)(
             Components {
@@ -192,34 +218,39 @@ where
     }
 }
 
-pub struct StatefulSystem<
+pub struct StatefulSystem<T, F, C, R>
+where
     T: 'static,
-    F: for<'scene> FnMut(&'scene mut T, Components<'scene, C>, Resources<'scene, R>) -> () + 'static,
+    F: for<'scene> FnMut(&'scene mut T, Components<'scene, C>, Resources<'scene, R>) -> ()
+        + 'static,
     C: ComponentQueries,
     R: SceneData<ResourceMarker>,
-> {
+{
     state: T,
     system: F,
     _markers: PhantomData<(C, R)>,
 }
 impl<T, F, C, R> StatefulSystem<T, F, C, R>
 where
-    F: for<'scene> FnMut(&'scene mut T, Components<'scene, C>, Resources<'scene, R>) -> () + 'static,
+    T: 'static,
+    F: for<'scene> FnMut(&'scene mut T, Components<'scene, C>, Resources<'scene, R>) -> ()
+        + 'static,
     C: ComponentQueries,
-    R: SceneData<ResourceMarker>
+    R: SceneData<ResourceMarker>,
 {
-    pub fn new(f: F, state: T) -> Self {
+    pub fn new(system: F, state: T) -> Self {
         StatefulSystem {
             state,
-            system: f,
-            _markers: PhantomData
+            system,
+            _markers: PhantomData,
         }
     }
 }
 impl<T, F, C, R> From<F> for StatefulSystem<T, F, C, R>
 where
     T: Default + 'static,
-    F: for<'scene> FnMut(&'scene mut T, Components<'scene, C>, Resources<'scene, R>) -> () + 'static,
+    F: for<'scene> FnMut(&'scene mut T, Components<'scene, C>, Resources<'scene, R>) -> ()
+        + 'static,
     C: ComponentQueries,
     R: SceneData<ResourceMarker>,
 {
@@ -234,7 +265,8 @@ where
 impl<T, F, C, R> PrepareSystem for StatefulSystem<T, F, C, R>
 where
     T: 'static,
-    F: for<'scene> FnMut(&'scene mut T, Components<'scene, C>, Resources<'scene, R>) -> () + 'static,
+    F: for<'scene> FnMut(&'scene mut T, Components<'scene, C>, Resources<'scene, R>) -> ()
+        + 'static,
     C: ComponentQueries,
     R: SceneData<ResourceMarker>,
 {
@@ -243,12 +275,14 @@ where
         Ok(PreparedStatefulSystemWrapper::from(self))
     }
 }
-struct PreparedStatefulSystemWrapper<
+struct PreparedStatefulSystemWrapper<T, F, C, R>
+where
     T: 'static,
-    F: for<'scene> FnMut(&'scene mut T, Components<'scene, C>, Resources<'scene, R>) -> () + 'static,
+    F: for<'scene> FnMut(&'scene mut T, Components<'scene, C>, Resources<'scene, R>) -> ()
+        + 'static,
     C: ComponentQueries,
     R: SceneData<ResourceMarker>,
-> {
+{
     state: T,
     system: F,
     _markers: PhantomData<(C, R)>,
@@ -256,7 +290,8 @@ struct PreparedStatefulSystemWrapper<
 impl<T, F, C, R> From<StatefulSystem<T, F, C, R>> for PreparedStatefulSystemWrapper<T, F, C, R>
 where
     T: 'static,
-    F: for<'scene> FnMut(&'scene mut T, Components<'scene, C>, Resources<'scene, R>) -> () + 'static,
+    F: for<'scene> FnMut(&'scene mut T, Components<'scene, C>, Resources<'scene, R>) -> ()
+        + 'static,
     C: ComponentQueries,
     R: SceneData<ResourceMarker>,
 {
@@ -271,7 +306,8 @@ where
 impl<T, F, C, R> PreparedSystem for PreparedStatefulSystemWrapper<T, F, C, R>
 where
     T: 'static,
-    F: for<'scene> FnMut(&'scene mut T, Components<'scene, C>, Resources<'scene, R>) -> () + 'static,
+    F: for<'scene> FnMut(&'scene mut T, Components<'scene, C>, Resources<'scene, R>) -> ()
+        + 'static,
     C: ComponentQueries,
     R: SceneData<ResourceMarker>,
 {
