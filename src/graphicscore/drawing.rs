@@ -15,17 +15,17 @@
 //!
 //! For example, no texture can outlive its texture creator,
 //! but this is not true for canvases and texture creators.
-//! Texture creator can outlive its canvas and can still produce texturess - it is, however, useless.
+//! Texture creator can outlive its canvas and can still produce textures - it is, however, useless.
 //! Also, you can create multiple texture creators from the same canvas and all of them are valid.
 //!
 //! But there is one constraint that can cause undefined behaviour if broken - textures should only
 //! be used in the canvas that created their texture creator.
 //!
-//! Implementation of managing functions makes its best efforts are made to ensure this:
+//! Implementation of managing functions makes its best efforts to ensure this:
 //! you cannot instantiate most of the canvases, and you are only given access to them in managing functions;
 //! closures that capture external values (and thus can bring external textures) are prohibited;
 //! absence of return value of managing functions makes it
-//! impossible to return texture that is created by underlying canvas.
+//! impossible to return texture that is created by underlying canvas without using any globals.
 //!
 //! However, `ggengine` cannot track textures if they come from different window canvases,
 //! because enforcing proper constraints will make managing lifetimes and borrows really hard and will severely hurt the ergonomics.
@@ -41,8 +41,8 @@ use crate::{
         {Blend, BlendingType},
     },
     mathcore::{
-        shapes::{PolygonShape, Rect, Segment},
-        transforms::{Rotate, Scale, Translate},
+        shapes::{LineSegment, PolygonShape, Rect, Shape},
+        transforms::{Rotate, Translate},
         vectors::Point,
         Color,
     },
@@ -69,7 +69,7 @@ use std::fmt;
 /// # use ggengine::utils::Window;
 /// # use ggengine::graphicscore::{textures::{Texture, TextureCreator}, drawing::{Canvas, WindowCanvas}};
 /// # use ggengine::datacore::{assets::ToFile, images::{Image, PixelFormat}};
-/// # use ggengine::mathcore::{{Angle, Size, Color}, vectors::Point, shapes::{Segment, Rect}};
+/// # use ggengine::mathcore::{{Angle, Color}, vectors::Point, shapes::{LineSegment, Rect}};
 /// let engine: GGEngine = GGEngine::init();
 /// let window: Window = engine.build_window("ggengine", 1000, 1000, Default::default());
 /// let mut canvas: WindowCanvas = WindowCanvas::from_window(window, true);
@@ -81,34 +81,26 @@ use std::fmt;
 ///
 ///         image_canvas.draw_point(Point { x: 0.0, y: 0.0 });
 ///         image_canvas.draw_segment(
-///             Segment {
-///                 point1: Point { x: 10.0, y: 10.0 },
-///                 point2: Point { x: 50.0, y: 50.0 }
-///             }
+///             LineSegment { vertices: [Point { x: 10.0, y: 10.0 }, Point { x: 50.0, y: 50.0 } ]}
 ///         );
 ///         image_canvas.draw_rect(
-///             Rect::from_origin(
+///             Rect::new(
 ///                 Point { x: 100.0, y: 100.0 },
 ///                 Angle::DEG45,
-///                 Size::try_from(30.0).expect("Value is in correct range."),
-///                 Size::try_from(30.0).expect("Value is in correct range."),
+///                 30.0,
+///                 30.0
 ///             )
 ///         );
-///         image_canvas.draw_polygon(&[
-///             Point { x: 200.0, y: 200.0 },
-///             Point { x: 300.0, y: 300.0 },
-///             Point { x: 400.0, y: 100.0 },
-///         ]);
 ///
 ///         image_canvas.clear();
 ///
 ///         let texture_creator: TextureCreator = image_canvas.texture_creator();
 ///         image_canvas.blit_from_texture(
-///             Some(Rect::from_origin(
+///             Some(Rect::new(
 ///                 Point { x: 600.0, y: 600.0 },
 ///                 Angle::DEG60,
-///                 Size::try_from(100.0).expect("Value is in correct range."),
-///                 Size::try_from(100.0).expect("Value is in correct range."),
+///                 100.0,
+///                 100.0
 ///             )),
 ///             &texture_creator.create_texture_from_file("texture.png")
 ///                 .expect("Filename should be correct"),
@@ -139,25 +131,14 @@ pub trait Canvas<'a>: Blend {
     ///
     /// Points coordinates are truncated towards integers.
     ///
-    fn draw_segment(&mut self, segment: Segment);
+    fn draw_segment(&mut self, segment: LineSegment);
     /// Draws rectangle on the canvas.
     ///
     /// Points coordinates are truncated towards integers.
     ///
     fn draw_rect(&mut self, rect: Rect) {
-        self.draw_polygon(rect.vertices())
-    }
-    /// Draws polygon on the canvas.
-    ///
-    /// Points coordinates are truncated towards integers.
-    ///
-    fn draw_polygon(&mut self, polygon: &[Point]) {
-        let length = polygon.len();
-        for i in 1..=length {
-            self.draw_segment(Segment {
-                point1: polygon[i - 1],
-                point2: polygon[i % length],
-            });
+        for edge in rect.edges() {
+            self.draw_segment(edge);
         }
     }
 
@@ -217,11 +198,11 @@ macro_rules! impl_canvas {
                     .draw_fpoint((point.x, point.y))
                     .expect("`ggengine` renderer should be able to draw a point");
             }
-            fn draw_segment(&mut self, segment: Segment) {
+            fn draw_segment(&mut self, segment: LineSegment) {
                 self.canvas
                     .draw_fline(
-                        (segment.point1.x, segment.point1.y),
-                        (segment.point2.x, segment.point2.y),
+                        (segment.vertices[0].x, segment.vertices[0].y),
+                        (segment.vertices[1].x, segment.vertices[1].y),
                     )
                     .expect("`ggengine` renderer should be able to draw a point");
             }
@@ -243,7 +224,7 @@ macro_rules! impl_canvas {
                     .copy_ex_f(
                         texture.get_sdl_texture(),
                         src_area.map(|rect| {
-                            let [point1, point2] = rect.aabb();
+                            let (point1, point2) = rect.aabb();
                             let (width, height) = {
                                 let diff = point2 - point1;
                                 (diff.x as u32, diff.y as u32)
@@ -252,8 +233,7 @@ macro_rules! impl_canvas {
                         }),
                         dst_area.map(|rect| {
                             let origin = rect.origin();
-                            let size = rect.size();
-                            SdlFRect::from_center((origin.x, origin.y), size.0.get(), size.1.get())
+                            SdlFRect::from_center((origin.x, origin.y), rect.width(), rect.height())
                         }),
                         dst_area.map_or(0.0, |rect| f64::from(rect.angle().degrees())),
                         None,
@@ -509,7 +489,7 @@ impl WindowCanvas {
     /// # use ggengine::utils::Window;
     /// # use ggengine::graphicscore::drawing::{Canvas, WindowCanvas};
     /// # use ggengine::graphicscore::textures::{Texture, TextureCreator, AccessType};
-    /// # use ggengine::mathcore::{{Angle, Size, Color}, vectors::Point, shapes::Rect};
+    /// # use ggengine::mathcore::{{Angle, Color}, vectors::Point, shapes::Rect};
     /// let engine: GGEngine = GGEngine::init();
     /// let window: Window = engine.build_window("ggengine", 1000, 1000, Default::default());
     /// let mut canvas: WindowCanvas = WindowCanvas::from_window(window, true);
@@ -539,21 +519,21 @@ impl WindowCanvas {
     /// );
     ///
     /// canvas.blit_from_texture(
-    ///     Some(Rect::from_origin(
+    ///     Some(Rect::new(
     ///         Point { x: 100.0, y: 100.0 },
     ///         Angle::ZERO,
-    ///         Size::try_from(100.0).expect("Value is in correct range."),
-    ///         Size::try_from(100.0).expect("Value is in correct range.")
+    ///         100.0,
+    ///         100.0
     ///     )),
     ///     &texture1,
     ///     None
     /// );
     /// canvas.blit_from_texture(
-    ///     Some(Rect::from_origin(
+    ///     Some(Rect::new(
     ///         Point { x: 400.0, y: 400.0 },
     ///         Angle::ZERO,
-    ///         Size::try_from(100.0).expect("Value is in correct range."),
-    ///         Size::try_from(100.0).expect("Value is in correct range.")
+    ///         100.0,
+    ///         100.0
     ///     )),
     ///     &texture2,
     ///     None

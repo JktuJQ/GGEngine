@@ -9,6 +9,7 @@ use crate::mathcore::{
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::Debug,
+    iter::Sum,
     ops::{Add, AddAssign, BitXor, Mul, MulAssign, Neg, Sub, SubAssign},
 };
 
@@ -149,6 +150,16 @@ impl Add<Vector2> for Vector2 {
         self.combine(rhs, |a, b| a + b)
     }
 }
+impl Sum for Vector2 {
+    fn sum<I: Iterator<Item = Vector2>>(iter: I) -> Self {
+        iter.fold(Vector2::zero(), |acc, vec| acc + vec)
+    }
+}
+impl<'a> Sum<&'a Vector2> for Vector2 {
+    fn sum<I: Iterator<Item = &'a Vector2>>(iter: I) -> Self {
+        iter.fold(Vector2::zero(), |acc, vec| acc + *vec)
+    }
+}
 impl Sub<Vector2> for Vector2 {
     type Output = Self;
 
@@ -236,6 +247,16 @@ impl Add<Vector2Int> for Vector2Int {
 
     fn add(self, rhs: Vector2Int) -> Self::Output {
         self.combine(rhs, |a, b| a + b)
+    }
+}
+impl Sum for Vector2Int {
+    fn sum<I: Iterator<Item = Vector2Int>>(iter: I) -> Self {
+        iter.fold(Vector2Int::zero(), |acc, vec| acc + vec)
+    }
+}
+impl<'a> Sum<&'a Vector2Int> for Vector2Int {
+    fn sum<I: Iterator<Item = &'a Vector2Int>>(iter: I) -> Self {
+        iter.fold(Vector2Int::zero(), |acc, vec| acc + *vec)
     }
 }
 impl Sub<Vector2Int> for Vector2Int {

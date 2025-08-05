@@ -3,7 +3,7 @@
 //!
 
 use crate::mathcore::{
-    shapes::{Convex, Segment, Shape},
+    shapes::{Convex, LineSegment, Shape},
     vectors::{Vector2, Vertex},
     Sign,
 };
@@ -66,8 +66,8 @@ where
 
             for edge in s1.edges() {
                 let axis_projection = Vector2 {
-                    x: -(edge.point2.y - edge.point1.y),
-                    y: edge.point2.x - edge.point1.x,
+                    x: -(edge.vertices[1].y - edge.vertices[0].y),
+                    y: edge.vertices[1].x - edge.vertices[0].x,
                 }
                 .normalized();
 
@@ -95,8 +95,8 @@ where
 
             for edge in s1.edges() {
                 let axis_projection = Vector2 {
-                    x: -(edge.point2.y - edge.point1.y),
-                    y: edge.point2.x - edge.point1.x,
+                    x: -(edge.vertices[1].y - edge.vertices[0].y),
+                    y: edge.vertices[1].x - edge.vertices[0].x,
                 }
                 .normalized();
 
@@ -151,9 +151,8 @@ where
 
             let center = s1.origin();
             for vertex in s1.vertices() {
-                let half_diagonal = Segment {
-                    point1: center,
-                    point2: *vertex,
+                let half_diagonal = LineSegment {
+                    vertices: [center, *vertex],
                 };
                 for edge in s2.edges() {
                     if half_diagonal.intersection(edge).is_some() {
@@ -176,17 +175,16 @@ where
             }
 
             for vertex in s1.vertices() {
-                let half_diagonal = Segment {
-                    point1: if shape == 0 { center1 } else { center2 },
-                    point2: *vertex,
+                let half_diagonal = LineSegment {
+                    vertices: [if shape == 0 { center1 } else { center2 }, *vertex],
                 };
 
                 let mut displacement = Vector2::zero();
 
                 for edge in s2.edges() {
                     if let Some(intersection_point) = half_diagonal.intersection(edge) {
-                        displacement +=
-                            half_diagonal.slope() - (intersection_point - half_diagonal.point1);
+                        displacement += half_diagonal.slope()
+                            - (intersection_point - half_diagonal.vertices[0]);
                     }
                 }
                 center1 += displacement * (sign as i8 as f32);
@@ -203,25 +201,15 @@ mod tests {
     use crate::mathcore::{
         shapes::{PolygonShape, Rect},
         vectors::{Point, Vertex},
-        {Angle, Size},
+        Angle,
     };
 
     #[test]
     fn sat_detector() {
         use super::SATDetector;
 
-        let mut rect1 = Rect::from_origin(
-            Point { x: 0.0, y: 0.0 },
-            Angle::default(),
-            Size::try_from(2.0).expect("Value is in correct range."),
-            Size::try_from(2.0).expect("Value is in correct range."),
-        );
-        let rect2 = Rect::from_origin(
-            Point { x: 1.0, y: 0.0 },
-            Angle::default(),
-            Size::try_from(2.0).expect("Value is in correct range."),
-            Size::try_from(2.0).expect("Value is in correct range."),
-        );
+        let mut rect1 = Rect::new(Point { x: 0.0, y: 0.0 }, Angle::default(), 2.0, 2.0);
+        let rect2 = Rect::new(Point { x: 1.0, y: 0.0 }, Angle::default(), 2.0, 2.0);
         assert!(SATDetector.are_colliding(&rect1, &rect2));
         SATDetector.resolve(&mut rect1, &rect2);
         assert_eq!(
@@ -239,18 +227,8 @@ mod tests {
     fn diagonals_detector() {
         use super::DiagonalsDetector;
 
-        let mut rect1 = Rect::from_origin(
-            Point { x: 0.0, y: 0.0 },
-            Angle::default(),
-            Size::try_from(2.0).expect("Value is in correct range."),
-            Size::try_from(1.0).expect("Value is in correct range."),
-        );
-        let rect2 = Rect::from_origin(
-            Point { x: 1.0, y: 0.0 },
-            Angle::default(),
-            Size::try_from(2.0).expect("Value is in correct range."),
-            Size::try_from(2.0).expect("Value is in correct range."),
-        );
+        let mut rect1 = Rect::new(Point { x: 0.0, y: 0.0 }, Angle::default(), 2.0, 1.0);
+        let rect2 = Rect::new(Point { x: 1.0, y: 0.0 }, Angle::default(), 2.0, 2.0);
         assert!(DiagonalsDetector.are_colliding(&rect1, &rect2));
         DiagonalsDetector.resolve(&mut rect1, &rect2);
         assert_eq!(

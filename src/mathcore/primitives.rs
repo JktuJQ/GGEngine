@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     f32::consts::{FRAC_PI_2, FRAC_PI_3, FRAC_PI_4, FRAC_PI_6, TAU},
     ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign},
+    cmp::Ordering
 };
 
 /// [`Sign`] unit-only enum represents value's sign (value can be negative, positive or be equal to zero).
@@ -128,7 +129,7 @@ impl_sign_from!(f(f32, 0.0), (f64, 0.0),);
 /// assert_eq!(angle.radians(), 3.0 * FRAC_PI_2);
 /// ```
 ///
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Default, PartialOrd)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Default)]
 pub struct Angle(f32);
 impl Angle {
     /// Angle that corresponds to zero.
@@ -371,86 +372,22 @@ impl PartialEq for Angle {
     }
 }
 impl Eq for Angle {}
-
-/// [`Size`] is a newtype that restricts size's value to (0.0; +inf).
-///
-/// # Example
-/// ```rust
-/// # use ggengine::mathcore::Size;
-/// assert!(Size::try_from(-10.0).is_err());
-/// assert!(Size::try_from(0.0).is_err());
-/// assert_eq!(Size::try_from(0.1).expect("Value is in correct range").get(), 0.1);
-/// ```
-///
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialOrd)]
-pub struct Size(f32);
-impl Size {
-    /// Returns size value.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::mathcore::Size;
-    /// let size: Size = Size::try_from(10.0).expect("Value is in correct range.");
-    /// assert_eq!(size.get(), 10.0);
-    /// ```
-    ///
-    pub fn get(&self) -> f32 {
-        self.0
+impl PartialOrd for Angle {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
-impl TryFrom<f32> for Size {
-    type Error = ();
-
-    fn try_from(value: f32) -> Result<Self, Self::Error> {
-        if !value.is_finite() || value <= 0.0 {
-            Err(())
+impl Ord for Angle {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self.0 < other.0 {
+            Ordering::Less
+        } else if self.0 > other.0 {
+            Ordering::Greater
         } else {
-            Ok(Size(value))
+            Ordering::Equal
         }
     }
 }
-impl Add<Self> for Size {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Size::try_from(self.0 + rhs.0).expect("Value is guaranteed to be in correct range.")
-    }
-}
-impl Mul<Self> for Size {
-    type Output = Self;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        Size::try_from(self.0 * rhs.0).expect("Value is guaranteed to be in correct range.")
-    }
-}
-impl Div<Self> for Size {
-    type Output = Self;
-
-    fn div(self, rhs: Self) -> Self::Output {
-        Size::try_from(self.0 / rhs.0).expect("Value is guaranteed to be in correct range.")
-    }
-}
-impl AddAssign<Self> for Size {
-    fn add_assign(&mut self, rhs: Self) {
-        *self = *self + rhs;
-    }
-}
-impl MulAssign<Self> for Size {
-    fn mul_assign(&mut self, rhs: Self) {
-        *self = *self * rhs;
-    }
-}
-impl DivAssign<Self> for Size {
-    fn div_assign(&mut self, rhs: Self) {
-        *self = *self / rhs;
-    }
-}
-impl PartialEq for Size {
-    fn eq(&self, other: &Self) -> bool {
-        almost_equal(self.0, other.0)
-    }
-}
-impl Eq for Size {}
 
 /// [`Color`] struct represents RGBA model of color.
 ///
@@ -468,15 +405,12 @@ pub struct Color {
     /// Red component of color.
     ///
     pub r: u8,
-
     /// Green component of color.
     ///
     pub g: u8,
-
     /// Blue component of color.
     ///
     pub b: u8,
-
     /// Alpha channel value of color.
     ///
     pub a: u8,
