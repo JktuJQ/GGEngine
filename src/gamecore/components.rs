@@ -364,7 +364,7 @@ impl<T: Component> Bundle<1> for T {
 /// [`impl_bundle`] macro implements [`Bundle`] trait for tuples.
 ///
 macro_rules! impl_bundle {
-    ($size:tt: $(($t:ident, $index:tt),)*) => {
+    ($size:expr => $(($t:ident, $index:tt)),* $(,)?) => {
         impl<$($t,)*> Bundle<$size> for ($($t,)*)
         where
             $($t: Component,)*
@@ -379,7 +379,7 @@ macro_rules! impl_bundle {
     };
 }
 seq!(SIZE in 0..=16 {
-    #(seq!(N in 0..SIZE { impl_bundle!(SIZE: #((C~N, N),)*); });)*
+    #(seq!(N in 0..SIZE { impl_bundle!(SIZE => #((C~N, N),)*); });)*
 });
 
 /// [`Resource`] trait defines unique global data that is bounded to the `Scene`.
