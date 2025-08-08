@@ -2,10 +2,10 @@
 //! game objects that have some characteristics (components) on which game engine operates.
 //!
 
-use crate::gamecore::{
-    components::{bundled_components, Bundle, Component, ComponentId},
-    storages::EntityComponentStorage,
-};
+// submodules and public re-exports
+pub use super::storages::EntityComponentStorage;
+
+use crate::gamecore::components::{bundled_components, Bundle, Component, ComponentId};
 use std::hash::{Hash, Hasher};
 
 /// [`EntityId`] id struct is needed to identify entities

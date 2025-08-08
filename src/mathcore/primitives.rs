@@ -5,9 +5,9 @@
 use crate::mathcore::floats::{almost_equal, FloatOperations};
 use serde::{Deserialize, Serialize};
 use std::{
+    cmp::Ordering,
     f32::consts::{FRAC_PI_2, FRAC_PI_3, FRAC_PI_4, FRAC_PI_6, TAU},
     ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign},
-    cmp::Ordering
 };
 
 /// [`Sign`] unit-only enum represents value's sign (value can be negative, positive or be equal to zero).
@@ -65,7 +65,7 @@ impl MulAssign<Self> for Sign {
 /// Implements `From` trait for `Sign`.
 ///
 macro_rules! impl_sign_from {
-    (i $(($t:ty, $zero:literal)),* $(,)?) => {$(
+    (i => $(($t:ty, $zero:literal)),* $(,)?) => {$(
         impl From<$t> for Sign {
             fn from(value: $t) -> Self {
                 if value == $zero || -value == $zero {
@@ -81,7 +81,7 @@ macro_rules! impl_sign_from {
         }
     )*};
 
-    (u $(($t:ty, $zero:literal)),* $(,)?) => {$(
+    (u => $(($t:ty, $zero:literal)),* $(,)?) => {$(
         impl From<$t> for Sign {
             fn from(value: $t) -> Self {
                 if value == $zero {
@@ -94,7 +94,7 @@ macro_rules! impl_sign_from {
         }
     )*};
 
-    (f $(($t:ty, $zero:literal)),* $(,)?) => {$(
+    (f => $(($t:ty, $zero:literal)),* $(,)?) => {$(
         impl From<$t> for Sign {
             fn from(value: $t) -> Self {
                 if value == $zero || -value == $zero {
@@ -110,9 +110,9 @@ macro_rules! impl_sign_from {
         }
     )*};
 }
-impl_sign_from!(i (i8, 0), (i16, 0), (i32, 0), (i64, 0), (i128, 0));
-impl_sign_from!(u (u8, 0), (u16, 0), (u32, 0), (u64, 0), (u128, 0));
-impl_sign_from!(f (f32, 0.0), (f64, 0.0));
+impl_sign_from!(i => (i8, 0), (i16, 0), (i32, 0), (i64, 0), (i128, 0));
+impl_sign_from!(u => (u8, 0), (u16, 0), (u32, 0), (u64, 0), (u128, 0));
+impl_sign_from!(f => (f32, 0.0), (f64, 0.0));
 
 /// [`Angle`] is a newtype that restricts angle values to [0.0; TAU).
 /// If given value is not finite, 0.0 will be set as angle value.

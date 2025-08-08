@@ -3,12 +3,15 @@
 //! and implements several basic components used in games.
 //!
 
+// submodules and public re-exports
+pub use super::storages::EntityComponentStorage;
+
 use seq_macro::seq;
 use std::{
     any::{type_name, Any, TypeId},
     array::from_fn,
     fmt,
-    mem::swap,
+    mem::replace,
 };
 
 /// [`Component`] trait defines objects that are components by ECS terminology.
@@ -36,7 +39,7 @@ use std::{
 ///
 /// # Examples
 /// Any Rust type that fits [`Component`]'s constraints can be a [`Component`].
-/// They are usually structs, but can also be enums or zero sized types.
+/// They are usually structs, but can also be enums or zero-sized types.
 /// The following example shows how one might define components for RPG:
 /// ```rust
 /// # use ggengine::gamecore::components::Component;
@@ -306,6 +309,7 @@ impl ComponentId {
 ///
 /// Manual implementations (even those that leverage existing implementations) are rather clunky
 /// and susceptible to errors (fairly easy to mistype).
+///
 /// You can also provide multiple bundle implementations (of different length) to the same structure,
 /// which could be misleading and will prevent Rust from implicitly choosing right implementation
 /// for generic functions.
@@ -324,34 +328,6 @@ pub trait Bundle<const N: usize> {
     /// Consumes itself and returns iterator of [`BoxedComponent`]s.
     ///
     fn boxed_components(self) -> [BoxedComponent; N];
-}
-/// Type alias for `(ComponentId, BoxedComponent)`.
-///
-/// When [`Bundle`] is used, most of the time both the [`ComponentId`] and the [`BoxedComponent`]
-/// are needed; this type alias is specifically for those situations.
-///
-/// [`bundled_components`] function expresses that need - check docs for more information.
-///
-pub type BundledComponent = (ComponentId, BoxedComponent);
-/// [`bundled_components`] function zips two arrays of [`Bundle`] together.
-///
-/// Although functionality of [`Bundle`] is split in two functions
-/// (`Bundle::component_ids` does not require `self`, which allows operating on [`Bundle`]s as on types),
-/// it is still common to use those two arrays simultaneously, which could be done through this function.
-///
-/// If you only need an `Iterator` that is a result of a zip, manual zipping would be faster.
-///
-pub fn bundled_components<B: Bundle<N>, const N: usize>(bundle: B) -> [BundledComponent; N] {
-    struct NoOpComponent;
-    impl Component for NoOpComponent {}
-
-    let component_ids = B::component_ids();
-    let mut boxed_components = bundle.boxed_components();
-    from_fn(|i| {
-        let mut component: Box<dyn Component> = Box::new(NoOpComponent);
-        swap(&mut component, &mut boxed_components[i]);
-        (component_ids[i], component)
-    })
 }
 impl<T: Component> Bundle<1> for T {
     fn component_ids() -> [ComponentId; 1] {
@@ -382,102 +358,32 @@ seq!(SIZE in 0..=16 {
     #(seq!(N in 0..SIZE { impl_bundle!(SIZE => #((C~N, N),)*); });)*
 });
 
-/// [`Resource`] trait defines unique global data that is bounded to the `Scene`.
+/// Type alias for `(ComponentId, BoxedComponent)`.
 ///
-/// [`Resource`]s are very similar to [`Component`]s, with the only difference is that
-/// [`Component`]s are bounded to `Entity`s and [`Resource`]s are bound to the `Scene`.
+/// When [`Bundle`] is used, most of the time both the [`ComponentId`] and the [`BoxedComponent`]
+/// are needed; this type alias is specifically for those situations.
 ///
-/// Applications often have some global data that they share, it could be time, score, asset collection, etc.
-/// Although global resources could be implemented as components that belong to some 'global' Entity,
-/// that would be confusing and would not convey intention logic.
-/// [`Resource`] trait supports this pattern, enforcing it through type system and allowing
-/// for data to be shared easily.
+/// [`bundled_components`] function expresses that need - check docs for more information.
 ///
-/// # Implementation
-/// [`Resource`] trait requires `'static` trait bound, because `Any`
-/// is a supertrait of [`Resource`] trait, and it requires `'static` trait bound.
+pub type BundledComponent = (ComponentId, BoxedComponent);
+/// [`bundled_components`] function zips two arrays of [`Bundle`] together.
 ///
-/// Since most types implement `Any`, defining new [`Resource`]s could be done like so:
-/// ```rust
-/// use ggengine::gamecore::components::Resource;
-/// struct T;
-/// impl Resource for T {}
-/// ```
+/// Although functionality of [`Bundle`] is split in two functions
+/// (`Bundle::component_ids` does not require `self`, which allows operating on [`Bundle`]s as on types),
+/// it is still common to use those two arrays simultaneously, which could be done through this function.
 ///
-/// Considering that [`Resource`] is basically a [`Component`], almost everything
-/// that goes for [`Component`]s is also true for [`Resource`]s.
-/// To further understand relations between those traits, it is encouraged to read docs for submodule items.
+/// If you only need an `Iterator` that is a result of a zip, manual zipping would be faster.
 ///
-pub trait Resource: Any {}
-/// Type alias for `Box<dyn Resource>`.
-///
-/// This type alias will be frequently used in situations in which
-/// ownership of resource is needed.
-///
-/// `Box<dyn Resource>` also allows combining multiple different [`Resource`]s in one structure
-/// (`Vec`, iterator, etc.).
-///
-pub type BoxedResource = Box<dyn Resource>;
-impl dyn Resource {
-    /// Returns true if the inner type is the same as `R`.
-    ///
-    pub fn is<R: Resource>(&self) -> bool {
-        let as_any: &dyn Any = self;
-        as_any.is::<R>()
-    }
+pub fn bundled_components<B: Bundle<N>, const N: usize>(bundle: B) -> [BundledComponent; N] {
+    struct ZSTComponent;
+    impl Component for ZSTComponent {}
 
-    /// Attempts to downcast the box to a concrete type.
-    ///
-    /// # Note
-    /// `downcast` consumes initial `Box`,
-    /// but on failure it does not need to, and so it returns it in upcasted form (`Box<dyn Any>`).
-    /// Although it would be preferrable to return initial type (`Box<dyn Resource>`),
-    /// it is impossible to do so.
-    ///
-    pub fn downcast<R: Resource>(self: Box<Self>) -> Result<Box<R>, Box<dyn Any>> {
-        let as_any: Box<dyn Any> = self;
-        as_any.downcast::<R>()
-    }
-    /// Returns some reference to the inner value if it is of type `R`, or `None` if it isn’t.
-    ///
-    pub fn downcast_ref<R: Resource>(&self) -> Option<&R> {
-        let as_any: &dyn Any = self;
-        as_any.downcast_ref::<R>()
-    }
-    /// Returns some mutable reference to the inner value if it is of type `R`, or `None` if it isn’t.
-    ///
-    pub fn downcast_mut<R: Resource>(&mut self) -> Option<&mut R> {
-        let as_any: &mut dyn Any = self;
-        as_any.downcast_mut::<R>()
-    }
-}
-impl fmt::Debug for dyn Resource {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", type_name::<Self>())
-    }
-}
-/// [`ResourceId`] id struct is needed to identify [`Resource`]s in [`Scene`](super::scenes::Scene).
-///
-/// It is assigned by the [`Scene`](super::scenes::Scene) in which this [`Resource`] is registered.
-///
-/// # Usage
-/// Usage of this struct is fairly advanced.
-/// Most of the time you should use convenient statically typed API,
-/// which is provided by [`Scene`](super::scenes::Scene).
-///
-/// Storages operate on ids, which allows them to provide more flexible interface.
-/// You can also try to trick type system by providing data that does not correspond to Rust type
-/// through id of existing 'fake' type.
-///
-/// That said, you should use typed API that `ggengine` exposes through several structs,
-/// not the API of `ggengine::storages` (unless absolutely needed).
-///
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ResourceId(TypeId);
-impl ResourceId {
-    /// Returns [`ResourceId`] of given [`Resource`] type.
-    ///
-    pub fn of<R: Resource>() -> Self {
-        ResourceId(TypeId::of::<R>())
-    }
+    let component_ids = B::component_ids();
+    let mut boxed_components = bundle.boxed_components();
+    from_fn(|i| {
+        (
+            component_ids[i],
+            replace(&mut boxed_components[i], Box::new(ZSTComponent)),
+        )
+    })
 }

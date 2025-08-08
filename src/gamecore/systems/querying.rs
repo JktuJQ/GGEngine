@@ -8,7 +8,8 @@
 //!
 
 use crate::gamecore::{
-    components::{Component, Resource},
+    components::Component,
+    resources::Resource,
     storages::{EntityComponentStorage, ResourceStorage},
 };
 use seq_macro::seq;

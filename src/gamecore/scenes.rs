@@ -2,10 +2,10 @@
 //! all game objects, components and systems that are bound to that [`Scene`].
 //!
 
-use crate::gamecore::components::ComponentId;
 use crate::gamecore::{
-    components::{bundled_components, Bundle, Component, Resource, ResourceId},
+    components::{bundled_components, Bundle, Component, ComponentId},
     entities::{EntityId, EntityMut, EntityRef},
+    resources::{Resource, ResourceId},
     storages::{EntityComponentStorage, ResourceStorage},
 };
 
@@ -373,7 +373,7 @@ impl Scene {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::scenes::Scene;
-    /// # use ggengine::gamecore::components::Resource;
+    /// # use ggengine::gamecore::resources::Resource;
     /// struct Score(u32);
     /// impl Resource for Score {}
     ///
@@ -397,7 +397,7 @@ impl Scene {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::scenes::Scene;
-    /// # use ggengine::gamecore::components::Resource;
+    /// # use ggengine::gamecore::resources::Resource;
     /// struct Score(u32);
     /// impl Resource for Score {}
     ///
@@ -421,7 +421,7 @@ impl Scene {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::scenes::Scene;
-    /// # use ggengine::gamecore::components::Resource;
+    /// # use ggengine::gamecore::resources::Resource;
     /// struct Score(u32);
     /// impl Resource for Score {}
     ///
@@ -444,7 +444,7 @@ impl Scene {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::scenes::Scene;
-    /// # use ggengine::gamecore::components::Resource;
+    /// # use ggengine::gamecore::resources::Resource;
     /// struct Score(u32);
     /// impl Resource for Score {}
     ///
@@ -469,7 +469,7 @@ impl Scene {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::scenes::Scene;
-    /// # use ggengine::gamecore::components::Resource;
+    /// # use ggengine::gamecore::resources::Resource;
     /// struct Score(u32);
     /// impl Resource for Score {}
     ///
@@ -497,7 +497,7 @@ impl Scene {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::scenes::Scene;
-    /// # use ggengine::gamecore::components::Resource;
+    /// # use ggengine::gamecore::resources::Resource;
     /// struct Score(u32);
     /// impl Resource for Score {}
     ///

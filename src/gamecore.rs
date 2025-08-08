@@ -5,6 +5,7 @@
 // submodules and public re-exports
 pub mod components;
 pub mod entities;
+pub mod resources;
 pub mod scenes;
 pub mod storages;
 pub mod systems;

@@ -2,6 +2,7 @@
 //! entities and their components and implement whole behaviour of an application.
 //!
 
+// submodules and public re-exports
 pub mod querying;
 pub use querying::{ComponentGroup, ComponentsQuery, ResourcesQuery};
 use querying::{ComponentGroupsTuple, ResourcesTuple};
