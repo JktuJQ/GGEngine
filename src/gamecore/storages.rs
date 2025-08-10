@@ -1,11 +1,6 @@
 //! `gamecore::storages` submodule implements several collections that
 //! are used to store ECS-related data for game engine.
 //!
-//! This submodule is fairly low-level; it uses plain ids to implement structures,
-//! which allows providing the most flexible interface.
-//! `ggengine` provides typed API on top of this module through several structs; and
-//! you should use that, not the API of this submodule (unless absolutely needed).
-//!
 
 use std::{
     collections::{HashMap, HashSet},
@@ -17,7 +12,7 @@ use std::{
 ///
 /// # Usage
 /// ECS model heavily relies on fast querying and indexation of components and entities.
-/// Id structs are indices for navigating their counterparts in [`Scene`](super::scenes::Scene) storage,
+/// Id structs are indices for navigating their counterparts in storages,
 /// and those are implemented as wrappers of `u64`.
 ///
 /// This hasher allows for those `u64`s to be used as keys in collections that require hashing
@@ -36,11 +31,10 @@ impl Hasher for NoOpHasher {
         panic!("`write` method should not be used on `NoOpHasher`");
     }
 
-    fn write_u64(&mut self, i: u64) {
-        self.0 = i;
+    fn write_u64(&mut self, x: u64) {
+        self.0 = x;
     }
 }
-
 /// [`NoOpHasherState`] struct implements `BuildHasher` trait that produces [`NoOpHasher`].
 ///
 /// This should be passed to collections interfaces (e.g. `HashMap::with_hasher(NoOpHasherState)`).
@@ -57,14 +51,14 @@ impl BuildHasher for NoOpHasherState {
 
 /// Type alias for `HashSet<T, NoOpHasherState>`.
 ///
-/// [`IdSet`] should be used wherever id structs are keys in a `HashSet`.
+/// [`TypeIdSet`] should be used wherever id structs are keys in a `HashSet`.
 ///
-type IdSet<T> = HashSet<T, NoOpHasherState>;
+type TypeIdSet<T> = HashSet<T, NoOpHasherState>;
 /// Type alias for `HashMap<K, V, NoOpHasherState>`.
 ///
-/// [`IdMap`] should be used wherever id structs are keys in a `HashMap`.
+/// [`TypeIdMap`] should be used wherever id structs are keys in a `HashMap`.
 ///
-type IdMap<K, V> = HashMap<K, V, NoOpHasherState>;
+type TypeIdMap<K, V> = HashMap<K, V, NoOpHasherState>;
 
 // submodules and public re-exports
 mod entity_component_storage;

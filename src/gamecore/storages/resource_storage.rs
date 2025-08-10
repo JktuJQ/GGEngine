@@ -1,17 +1,17 @@
 //! Submodule that implement [`ResourceStorage`].
 //!
 
-use super::{IdMap, NoOpHasherState};
-use crate::gamecore::resources::{BoxedResource, ResourceId};
+use super::{NoOpHasherState, TypeIdMap};
+use crate::gamecore::resources::{Resource, ResourceId};
 
 /// [`ResourceStorage`] struct provides API
-/// for a storage of [`Resource`](super::resources::Resource)s.
+/// for a storage of [`Resource`]s.
 ///
 #[derive(Debug, Default)]
 pub struct ResourceStorage {
     /// Map that stores resources.
     ///
-    resources: IdMap<ResourceId, BoxedResource>,
+    resources: TypeIdMap<ResourceId, Box<dyn Resource>>,
 }
 impl ResourceStorage {
     /// Initializes new [`ResourceStorage`].
@@ -26,7 +26,7 @@ impl ResourceStorage {
     ///
     pub fn new() -> Self {
         ResourceStorage {
-            resources: IdMap::with_hasher(NoOpHasherState),
+            resources: TypeIdMap::with_hasher(NoOpHasherState),
         }
     }
 
@@ -35,7 +35,9 @@ impl ResourceStorage {
     pub fn clear(&mut self) {
         self.resources.clear();
     }
-
+}
+// resources
+impl ResourceStorage {
     /// Inserts a new resource with the given value.
     ///
     /// Resources are unique data of a given type.
@@ -45,22 +47,25 @@ impl ResourceStorage {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::ResourceStorage;
-    /// # use ggengine::gamecore::resources::{Resource, ResourceId};
+    /// # use ggengine::gamecore::resources::Resource;
     /// struct Score(u32);
     /// impl Resource for Score {}
     ///
     /// let mut storage: ResourceStorage = ResourceStorage::new();
     ///
-    /// storage.insert_resource(ResourceId::of::<Score>(), Box::new(Score(0)));
+    /// storage.insert(Score(0));
     /// ```
     ///
-    pub fn insert_resource(
-        &mut self,
-        resource_id: ResourceId,
-        boxed_resource: BoxedResource,
-    ) -> Option<BoxedResource> {
-        self.resources.insert(resource_id, boxed_resource)
+    pub fn insert<R: Resource>(&mut self, resource: R) -> Option<R> {
+        self.resources
+            .insert(ResourceId::of::<R>(), Box::new(resource))
+            .map(|boxed| {
+                *(boxed
+                    .downcast::<R>()
+                    .expect("`Resource` is of correct type"))
+            })
     }
+
     /// Removes the resource of a given type and returns it if present.
     /// Otherwise, returns `None`.
     ///
@@ -73,13 +78,18 @@ impl ResourceStorage {
     ///
     /// let mut storage: ResourceStorage = ResourceStorage::new();
     ///
-    /// storage.insert_resource(ResourceId::of::<Score>(), Box::new(Score(0)));
-    /// assert!(storage.remove_resource(ResourceId::of::<Score>()).is_some());
+    /// storage.insert(Score(0));
+    /// assert_eq!(storage.remove::<Score>().expect("`Score` was inserted").0, 0);
     /// ```
     ///
-    pub fn remove_resource(&mut self, resource_id: ResourceId) -> Option<BoxedResource> {
-        self.resources.remove(&resource_id)
+    pub fn remove<R: Resource>(&mut self) -> Option<R> {
+        self.resources.remove(&ResourceId::of::<R>()).map(|boxed| {
+            *(boxed
+                .downcast::<R>()
+                .expect("`Resource` is of correct type"))
+        })
     }
+
     /// Returns whether a resource of given type exists or not.
     ///
     /// # Example
@@ -90,18 +100,19 @@ impl ResourceStorage {
     /// impl Resource for Score {}
     ///
     /// let mut storage: ResourceStorage = ResourceStorage::new();
-    /// assert!(!storage.contains_resource(ResourceId::of::<Score>()));
+    /// assert!(!storage.contains::<Score>());
     ///
-    /// storage.insert_resource(ResourceId::of::<Score>(), Box::new(Score(0)));
-    /// assert!(storage.contains_resource(ResourceId::of::<Score>()));
+    /// storage.insert(Score(0));
+    /// assert!(storage.contains::<Score>());
     ///
-    /// let _ = storage.remove_resource(ResourceId::of::<Score>());
-    /// assert!(!storage.contains_resource(ResourceId::of::<Score>()));
+    /// let _ = storage.remove::<Score>();
+    /// assert!(!storage.contains::<Score>());
     /// ```
     ///
-    pub fn contains_resource(&mut self, resource_id: ResourceId) -> bool {
-        self.resources.contains_key(&resource_id)
+    pub fn contains<R: Resource>(&mut self) -> bool {
+        self.resources.contains_key(&ResourceId::of::<R>())
     }
+
     /// Gets a reference to the resource of the given type if present.
     ///
     /// # Example
@@ -112,14 +123,18 @@ impl ResourceStorage {
     /// impl Resource for Score {}
     ///
     /// let mut storage: ResourceStorage = ResourceStorage::new();
-    /// assert!(storage.resource(ResourceId::of::<Score>()).is_none());
+    /// assert!(storage.resource::<Score>().is_none());
     ///
-    /// storage.insert_resource(ResourceId::of::<Score>(), Box::new(Score(0)));
-    /// assert!(storage.resource(ResourceId::of::<Score>()).is_some());
+    /// storage.insert(Score(0));
+    /// assert_eq!(storage.resource::<Score>().expect("`Score` was inserted").0, 0);
     /// ```
     ///
-    pub fn resource(&self, resource_id: ResourceId) -> Option<&BoxedResource> {
-        self.resources.get(&resource_id)
+    pub fn resource<R: Resource>(&self) -> Option<&R> {
+        self.resources.get(&ResourceId::of::<R>()).map(|boxed| {
+            boxed
+                .downcast_ref::<R>()
+                .expect("`Resource` is of correct type")
+        })
     }
     /// Gets a mutable reference to the resource of the given type if present.
     ///
@@ -131,37 +146,19 @@ impl ResourceStorage {
     /// impl Resource for Score {}
     ///
     /// let mut storage: ResourceStorage = ResourceStorage::new();
-    /// assert!(storage.resource_mut(ResourceId::of::<Score>()).is_none());
+    /// assert!(storage.resource_mut::<Score>().is_none());
     ///
-    /// storage.insert_resource(ResourceId::of::<Score>(), Box::new(Score(0)));
-    /// assert!(storage.resource_mut(ResourceId::of::<Score>()).is_some());
+    /// storage.insert(Score(0));
+    /// let score = storage.resource_mut::<Score>().expect("`Score` was isnerted");
+    /// score.0 = 15;
+    /// assert_eq!(storage.resource::<Score>().expect("`Score` was inserted").0, 15);
     /// ```
     ///
-    pub fn resource_mut(&mut self, resource_id: ResourceId) -> Option<&mut BoxedResource> {
-        self.resources.get_mut(&resource_id)
-    }
-    /// Gets a mutable reference to the resource of given type if present,
-    /// otherwise inserts the resource that is constructed by given closure and
-    /// returns mutable reference to it.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::gamecore::storages::ResourceStorage;
-    /// # use ggengine::gamecore::resources::{Resource, ResourceId};
-    /// struct Score(u32);
-    /// impl Resource for Score {}
-    ///
-    /// let mut storage: ResourceStorage = ResourceStorage::new();
-    /// assert!(!storage.contains_resource(ResourceId::of::<Score>()));
-    ///
-    /// let _ = storage.resource_get_or_insert_with(ResourceId::of::<Score>(), || Box::new(Score(10)));
-    /// assert!(storage.contains_resource(ResourceId::of::<Score>()));
-    /// ```
-    pub fn resource_get_or_insert_with(
-        &mut self,
-        resource_id: ResourceId,
-        f: impl FnOnce() -> BoxedResource,
-    ) -> &mut BoxedResource {
-        self.resources.entry(resource_id).or_insert_with(|| f())
+    pub fn resource_mut<R: Resource>(&mut self) -> Option<&mut R> {
+        self.resources.get_mut(&ResourceId::of::<R>()).map(|boxed| {
+            boxed
+                .downcast_mut::<R>()
+                .expect("`Resource` is of correct type")
+        })
     }
 }

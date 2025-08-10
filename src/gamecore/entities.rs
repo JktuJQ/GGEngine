@@ -5,17 +5,17 @@
 // submodules and public re-exports
 pub use super::storages::EntityComponentStorage;
 
-use crate::gamecore::components::{bundled_components, Bundle, Component, ComponentId};
+use crate::gamecore::components::{Bundle, Component};
 use std::hash::{Hash, Hasher};
 
 /// [`EntityId`] id struct is needed to identify entities
-/// in [`Scene`](super::scenes::Scene).
+/// in [`storage`](super::storages::EntityComponentStorage).
 ///
-/// It is assigned by the [`Scene`](super::scenes::Scene) in which
+/// It is assigned by the [`storage`](super::storages::EntityComponentStorage) in which
 /// this entity is registered.
 ///
-/// [`EntityId`] is only valid for the [`Scene`](super::scenes::Scene) it was obtained from,
-/// and although you can use it for any other scene,
+/// [`EntityId`] is only valid for the [`EntityComponentStorage`] it was obtained from,
+/// and although you can use it for any other storage,
 /// fetching will either fail or return unexpected results.
 ///
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -28,8 +28,7 @@ impl Hash for EntityId {
 
 /// [`EntityRef`] provides immutable access to a single entity and all of its components.
 ///
-/// This struct provides ergonomic access to [`Scene`](super::scenes::Scene) API,
-/// and `ggengine` advises using [`EntityRef`] instead of using bare [`Scene`](super::scenes::Scene).
+/// This struct provides ergonomic access to [`EntityComponentStorage`] API,
 ///
 /// # Note
 /// If you want to downgrade [`EntityMut`] to [`EntityRef`] without manual dropping,
@@ -40,7 +39,7 @@ pub struct EntityRef<'a> {
     /// Entity id.
     ///
     entity_id: EntityId,
-    /// Entity scene which can be navigated by `entity_id`.
+    /// Entity storage which can be navigated by `entity_id`.
     ///
     entity_component_storage: &'a EntityComponentStorage,
 }
@@ -62,10 +61,10 @@ impl EntityRef<'_> {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::entities::{EntityId, EntityRef};
-    /// # use ggengine::gamecore::scenes::Scene;
-    /// let mut scene: Scene = Scene::new();
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let entity: EntityId = EntityRef::from(scene.spawn_entity(())).id();
+    /// let entity: EntityId = EntityRef::from(storage.insert_empty_entity()).id();
     /// ```
     ///
     pub fn id(&self) -> EntityId {
@@ -77,27 +76,28 @@ impl EntityRef<'_> {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::entities::EntityRef;
-    /// # use ggengine::gamecore::scenes::Scene;
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::components::Component;
     /// struct Player;
     /// impl Component for Player {}
     ///
-    /// let mut scene: Scene = Scene::new();
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let mut entity: EntityRef = EntityRef::from(scene.spawn_entity((Player,)));
+    /// let mut entity: EntityRef = EntityRef::from(storage.insert_entity(Player));
     /// assert!(entity.contains::<Player>());
     /// ```
     ///
     pub fn contains<C: Component>(&self) -> bool {
         self.entity_component_storage
-            .contains_component(self.entity_id, ComponentId::of::<C>())
+            .contains_component::<C>(self.entity_id)
     }
+
     /// Returns immutable reference to the component of this entity if present.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::entities::EntityRef;
-    /// # use ggengine::gamecore::scenes::Scene;
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::components::Component;
     /// struct Player;
     /// impl Component for Player {}
@@ -105,19 +105,13 @@ impl EntityRef<'_> {
     /// struct Health(u32);
     /// impl Component for Health {}
     ///
-    /// let mut scene: Scene = Scene::new();
-    /// let entity: EntityRef = EntityRef::from(scene.spawn_entity((Player, Health(10))));
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    /// let entity: EntityRef = EntityRef::from(storage.insert_entity((Player, Health(10))));
     /// assert_eq!(entity.get::<Health>().expect("Component was inserted").0, 10);
     /// ```
     ///
     pub fn get<C: Component>(&self) -> Option<&C> {
-        self.entity_component_storage
-            .component(self.entity_id, ComponentId::of::<C>())
-            .map(|component_ref| {
-                component_ref
-                    .downcast_ref::<C>()
-                    .expect("This type should correspond to this value")
-            })
+        self.entity_component_storage.component::<C>(self.entity_id)
     }
 }
 impl<'a> From<EntityMut<'a>> for EntityRef<'a> {
@@ -131,15 +125,14 @@ impl<'a> From<EntityMut<'a>> for EntityRef<'a> {
 
 /// [`EntityMut`] provides mutable access to a single entity and all of its components.
 ///
-/// This struct provides ergonomic access to [`Scene`](super::scenes::Scene) API,
-/// and `ggengine` advises using [`EntityMut`] instead of using bare [`Scene`](super::scenes::Scene).
+/// This struct provides ergonomic access to [`EntityComponentStorage`] API.
 ///
 #[derive(Debug)]
 pub struct EntityMut<'a> {
     /// Entity id.
     ///
     entity_id: EntityId,
-    /// Entity scene which can be navigated by `entity_id`.
+    /// Entity storage which can be navigated by `entity_id`.
     ///
     entity_component_storage: &'a mut EntityComponentStorage,
 }
@@ -161,34 +154,33 @@ impl EntityMut<'_> {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::entities::EntityId;
-    /// # use ggengine::gamecore::scenes::Scene;
-    /// let mut scene: Scene = Scene::new();
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let entity: EntityId = scene.spawn_entity(()).id();
+    /// let entity: EntityId = storage.insert_empty_entity().id();
     /// ```
     ///
     pub fn id(&self) -> EntityId {
         self.entity_id
     }
 
-    /// Consumes [`EntityMut`] and despawns its entity.
+    /// Consumes [`EntityMut`] and removes its entity.
     ///
-    /// When this function is called,
-    /// [`EntityId`] from `EntityMut::id` are no longer valid.
+    /// When this function is called, [`EntityId`]s that were obtained from `EntityMut::id` are no longer valid.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::entities::{EntityMut, EntityId};
-    /// # use ggengine::gamecore::scenes::Scene;
-    /// let mut scene: Scene = Scene::new();
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let entity: EntityMut = scene.spawn_entity(());
+    /// let entity: EntityMut = storage.insert_empty_entity();
     /// let entity_id: EntityId = entity.id();
-    /// entity.despawn();
-    /// assert!(!scene.contains_entity(entity_id));
+    /// entity.destroy();
+    /// assert!(!storage.contains_entity(entity_id));
     /// ```
     ///
-    pub fn despawn(self) {
+    pub fn destroy(self) {
         let _ = self.entity_component_storage.remove_entity(self.entity_id);
     }
 
@@ -196,33 +188,30 @@ impl EntityMut<'_> {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::entities::EntityMut;
-    /// # use ggengine::gamecore::scenes::Scene;
+    /// # use ggengine::gamecore::entities::{EntityMut, EntityId};
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::components::Component;
     /// struct Player;
     /// impl Component for Player {}
     ///
-    /// let mut scene: Scene = Scene::new();
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let mut entity: EntityMut = scene.spawn_entity(());
+    /// let mut entity: EntityMut = storage.insert_empty_entity();
     /// let _ = entity.insert(Player);
+    /// let id: EntityId = entity.id();
+    /// assert!(storage.contains_component::<Player>(id));
     /// ```
     ///
     pub fn insert<C: Component>(&mut self, component: C) -> Option<C> {
         self.entity_component_storage
-            .insert_component(self.entity_id, ComponentId::of::<C>(), Box::new(component))
-            .map(|boxed_component| {
-                *(boxed_component
-                    .downcast::<C>()
-                    .expect("This type should correspond to this value"))
-            })
+            .insert_component(self.entity_id, component)
     }
     /// Inserts bundle of components into entity.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::entities::EntityMut;
-    /// # use ggengine::gamecore::scenes::Scene;
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::components::Component;
     /// struct Player;
     /// impl Component for Player {}
@@ -230,17 +219,17 @@ impl EntityMut<'_> {
     /// struct Health(u32);
     /// impl Component for Health {}
     ///
-    /// let mut scene: Scene = Scene::new();
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let mut entity: EntityMut = scene.spawn_entity(());
+    /// let mut entity: EntityMut = storage.insert_empty_entity();
     /// let _ = entity.insert_many((Player, Health(10)));
     /// assert!(entity.contains::<Player>());
     /// assert!(entity.contains::<Health>());
     /// ```
     ///
-    pub fn insert_many<B: Bundle<N>, const N: usize>(&mut self, bundle: B) {
+    pub fn insert_many<B: Bundle>(&mut self, bundle: B) {
         self.entity_component_storage
-            .insert_components(self.entity_id, bundled_components(bundle).into_iter())
+            .insert_components(self.entity_id, bundle)
     }
 
     /// Removes component from entity and returns old value if present.
@@ -248,33 +237,28 @@ impl EntityMut<'_> {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::entities::EntityMut;
-    /// # use ggengine::gamecore::scenes::Scene;
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::components::Component;
     /// struct Player;
     /// impl Component for Player {}
     ///
-    /// let mut scene: Scene = Scene::new();
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let mut entity: EntityMut = scene.spawn_entity((Player,));
+    /// let mut entity: EntityMut = storage.insert_entity(Player);
     /// let player: Player = entity.remove::<Player>().expect("Component is present");
     /// assert!(!entity.contains::<Player>());
     /// ```
     ///
     pub fn remove<C: Component>(&mut self) -> Option<C> {
         self.entity_component_storage
-            .remove_component(self.entity_id, ComponentId::of::<C>())
-            .map(|boxed_component| {
-                *(boxed_component
-                    .downcast::<C>()
-                    .expect("This type should correspond to this value"))
-            })
+            .remove_component::<C>(self.entity_id)
     }
     /// Removes all components from entity.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::entities::EntityMut;
-    /// # use ggengine::gamecore::scenes::Scene;
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::components::Component;
     /// struct Player;
     /// impl Component for Player {}
@@ -285,25 +269,26 @@ impl EntityMut<'_> {
     /// struct Health(u32);
     /// impl Component for Health {}
     ///
-    /// let mut scene: Scene = Scene::new();
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let mut entity: EntityMut = scene.spawn_entity((Player, Name("Alice"), Health(10),));
-    /// entity.remove_many::<2, (Player, Health)>();
+    /// let mut entity: EntityMut = storage.insert_entity((Player, Name("Alice"), Health(10)));
+    /// entity.remove_many::<(Player, Health)>();
     /// assert!(!entity.contains::<Player>());
     /// assert!(entity.contains::<Name>());
     /// assert!(!entity.contains::<Health>());
     /// ```
     ///
-    pub fn remove_many<const N: usize, B: Bundle<N>>(&mut self) {
+    pub fn remove_many<B: Bundle>(&mut self) {
         self.entity_component_storage
-            .remove_components(self.entity_id, B::component_ids().into_iter())
+            .remove_components::<B>(self.entity_id)
     }
+
     /// Removes all components from entity.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::entities::EntityMut;
-    /// # use ggengine::gamecore::scenes::Scene;
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::components::Component;
     /// struct Player;
     /// impl Component for Player {}
@@ -311,17 +296,16 @@ impl EntityMut<'_> {
     /// struct Health(u32);
     /// impl Component for Health {}
     ///
-    /// let mut scene: Scene = Scene::new();
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let mut entity: EntityMut = scene.spawn_entity((Player, Health(10)));
-    /// entity.remove_all_components();
+    /// let mut entity: EntityMut = storage.insert_entity((Player, Health(10)));
+    /// entity.clear();
     /// assert!(!entity.contains::<Player>());
     /// assert!(!entity.contains::<Health>());
     /// ```
     ///
-    pub fn remove_all_components(&mut self) {
-        self.entity_component_storage
-            .remove_all_components(self.entity_id)
+    pub fn clear(&mut self) {
+        self.entity_component_storage.clear_entity(self.entity_id);
     }
 
     /// Returns whether this component is present in entity or not.
@@ -329,14 +313,14 @@ impl EntityMut<'_> {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::entities::EntityMut;
-    /// # use ggengine::gamecore::scenes::Scene;
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::components::Component;
     /// struct Player;
     /// impl Component for Player {}
     ///
-    /// let mut scene: Scene = Scene::new();
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let mut entity: EntityMut = scene.spawn_entity(());
+    /// let mut entity: EntityMut = storage.insert_empty_entity();
     /// assert!(!entity.contains::<Player>());
     ///
     /// let _ = entity.insert(Player);
@@ -345,14 +329,14 @@ impl EntityMut<'_> {
     ///
     pub fn contains<C: Component>(&self) -> bool {
         self.entity_component_storage
-            .contains_component(self.entity_id, ComponentId::of::<C>())
+            .contains_component::<C>(self.entity_id)
     }
     /// Returns immutable reference to the component of this entity if present.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::entities::EntityMut;
-    /// # use ggengine::gamecore::scenes::Scene;
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::components::Component;
     /// struct Player;
     /// impl Component for Player {}
@@ -360,27 +344,21 @@ impl EntityMut<'_> {
     /// struct Health(u32);
     /// impl Component for Health {}
     ///
-    /// let mut scene: Scene = Scene::new();
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let mut entity: EntityMut = scene.spawn_entity((Player, Health(10)));
+    /// let mut entity: EntityMut = storage.insert_entity((Player, Health(10)));
     /// assert_eq!(entity.get::<Health>().expect("Component was inserted").0, 10);
     /// ```
     ///
     pub fn get<C: Component>(&self) -> Option<&C> {
-        self.entity_component_storage
-            .component(self.entity_id, ComponentId::of::<C>())
-            .map(|boxed_component| {
-                boxed_component
-                    .downcast_ref::<C>()
-                    .expect("This type should correspond to this value")
-            })
+        self.entity_component_storage.component::<C>(self.entity_id)
     }
     /// Returns mutable reference to the component of this entity if present.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::entities::EntityMut;
-    /// # use ggengine::gamecore::scenes::Scene;
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::components::Component;
     /// struct Player;
     /// impl Component for Player {}
@@ -388,49 +366,15 @@ impl EntityMut<'_> {
     /// struct Health(u32);
     /// impl Component for Health {}
     ///
-    /// let mut scene: Scene = Scene::new();
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let mut entity: EntityMut = scene.spawn_entity((Player, Health(10)));
+    /// let mut entity: EntityMut = storage.insert_entity((Player, Health(10)));
     /// entity.get_mut::<Health>().expect("Component is present").0 = 20;
     /// assert_eq!(entity.get::<Health>().expect("Component was inserted").0, 20);
     /// ```
     ///
     pub fn get_mut<C: Component>(&mut self) -> Option<&mut C> {
         self.entity_component_storage
-            .component_mut(self.entity_id, ComponentId::of::<C>())
-            .map(|component_mut| {
-                component_mut
-                    .downcast_mut::<C>()
-                    .expect("This type should correspond to this value")
-            })
-    }
-    /// Gets a mutable reference to the component of given type if present,
-    /// otherwise inserts the component that is constructed by given closure and
-    /// returns mutable reference to it.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::gamecore::entities::EntityMut;
-    /// # use ggengine::gamecore::scenes::Scene;
-    /// # use ggengine::gamecore::components::Component;
-    /// struct Player;
-    /// impl Component for Player {}
-    ///
-    /// struct Health(u32);
-    /// impl Component for Health {}
-    ///
-    /// let mut scene: Scene = Scene::new();
-    ///
-    /// let mut entity: EntityMut = scene.spawn_entity(Player);
-    /// let health: &mut Health = entity.get_or_insert_with(|| Health(10));
-    /// assert_eq!(health.0, 10);
-    /// assert!(entity.contains::<Health>());
-    /// ```
-    ///
-    pub fn get_or_insert_with<C: Component>(&mut self, f: impl FnOnce() -> C) -> &mut C {
-        self.entity_component_storage
-            .component_get_or_insert_with(self.entity_id, ComponentId::of::<C>(), || Box::new(f()))
-            .downcast_mut::<C>()
-            .expect("This type should correspond to this value")
+            .component_mut::<C>(self.entity_id)
     }
 }

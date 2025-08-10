@@ -1,17 +1,14 @@
 //! `gamecore::components` submodule defines [`Component`] trait
 //! that allows binding game logic that is represented in form of Rust types to entity,
-//! and implements several basic components used in games.
+//! and implements several common components used in games.
 //!
 
-// submodules and public re-exports
-pub use super::storages::EntityComponentStorage;
-
+use crate::gamecore::entities::EntityId;
 use seq_macro::seq;
 use std::{
     any::{type_name, Any, TypeId},
-    array::from_fn,
     fmt,
-    mem::replace,
+    iter::{empty, once},
 };
 
 /// [`Component`] trait defines objects that are components by ECS terminology.
@@ -37,7 +34,7 @@ use std::{
 /// impl Component for T {}
 /// ```
 ///
-/// # Examples
+/// # Example
 /// Any Rust type that fits [`Component`]'s constraints can be a [`Component`].
 /// They are usually structs, but can also be enums or zero-sized types.
 /// The following example shows how one might define components for RPG:
@@ -154,16 +151,10 @@ impl ComponentId {
 /// [`Bundle`] trait provides a way to create a set of [`Component`]s that are coupled
 /// by some logic, and it just makes sense to use those together.
 ///
-/// Bundles are only a convenient way to initialize new entities and they cannot be used to fetch from those.
-/// That is because [`Component`]s in entity are unique
-/// (you can't have two components of one type in one entity).
-/// As a result, removing one of intersecting bundles might invalidate the other one,
-/// which would be rather unexpected in a system that is operating on unremoved bundle.
-///
 /// # Examples
 /// Every [`Component`] is a [`Bundle`], because component is basically a set (bundle) of one component.
 /// Additionally, tuples of bundles are also [`Bundle`]
-/// (with up to 16 items; if you need more, consider implementing your own [`Bundle`]).
+/// (with up to 16 items, but can be nested indefinetely; if you need more, consider implementing your own [`Bundle`]).
 /// This allows you to combine the necessary components into a [`Bundle`].
 ///
 /// For example defining a `PlayerBundle` containing components that describe the player
@@ -251,7 +242,9 @@ impl ComponentId {
 ///
 /// 2. You can leverage provided implementation to construct your own:
 /// ```rust
-/// # use ggengine::gamecore::components::{Bundle, Component, ComponentId, BoxedComponent};
+/// # use ggengine::gamecore::components::{Bundle, Component, ComponentId};
+/// # use ggengine::gamecore::storages::EntityComponentStorage;
+/// # use ggengine::gamecore::entities::EntityId;
 /// # #[derive(Default)]
 /// # struct Player;
 /// # impl Component for Player {}
@@ -273,12 +266,19 @@ impl ComponentId {
 ///     name: Name,
 ///     position: Position,
 /// }
-/// impl Bundle<3> for PlayerBundle {
-///     fn component_ids() -> [ComponentId; 3] {
+/// impl Bundle for PlayerBundle {
+///     const SIZE: usize = 3;
+///
+///     fn component_ids() -> impl Iterator<Item = ComponentId> {
 ///         <(Player, Name, Position)>::component_ids()
 ///     }
-///     fn boxed_components(self) -> [BoxedComponent; 3] {
-///         (self.player, self.name, self.position).boxed_components()
+///     fn add_to_entity(
+///         self,
+///         entity_id: EntityId,
+///         entity_component_storage: &mut EntityComponentStorage
+///     ) {
+///         (self.player, self.name, self.position)
+///             .add_to_entity(entity_id, entity_component_storage)
 ///     }
 /// }
 ///
@@ -292,98 +292,100 @@ impl ComponentId {
 ///
 /// 3. You can manually implement [`Bundle`] trait:
 /// ```rust
-/// # use ggengine::gamecore::components::{Bundle, Component, ComponentId, BoxedComponent};
+/// # use ggengine::gamecore::components::{Bundle, Component, ComponentId};
+/// # use ggengine::gamecore::storages::EntityComponentStorage;
+/// # use ggengine::gamecore::entities::EntityId;
 /// # use std::iter::once;
 /// struct PackedBundle<T> {
 ///     inner_component: T
 /// }
-/// impl<T: Component> Bundle<1> for PackedBundle<T> {
-///     fn component_ids() -> [ComponentId; 1] {
-///         [ComponentId::of::<T>()]
+/// impl<T: Component> Bundle for PackedBundle<T> {
+///     const SIZE: usize = 1;
+///
+///     fn component_ids() -> impl Iterator<Item = ComponentId> {
+///         once(ComponentId::of::<T>())
 ///     }
-///     fn boxed_components(self) -> [BoxedComponent; 1] {
-///         [Box::new(self.inner_component)]
+///     fn add_to_entity(
+///         self,
+///         entity_id: EntityId,
+///         entity_component_storage: &mut EntityComponentStorage
+///     ) {
+///         let _ = entity_component_storage.insert_component(entity_id, self.inner_component);
 ///     }
 /// }
 /// ```
 ///
 /// Manual implementations (even those that leverage existing implementations) are rather clunky
 /// and susceptible to errors (fairly easy to mistype).
+/// With that in mind, you should use implementation for tuples.
 ///
-/// You can also provide multiple bundle implementations (of different length) to the same structure,
-/// which could be misleading and will prevent Rust from implicitly choosing right implementation
-/// for generic functions.
-/// With that in mind, you should use implementation for tuples
-/// (which is protected by orphan rules from multiple implementations).
-///
-pub trait Bundle<const N: usize> {
+pub trait Bundle {
+    /// Size of the [`Bundle`].
+    ///
+    const SIZE: usize;
+
     /// Returns ids of all components that are in the bundle.
     ///
-    /// Since that can be done statically ([`Bundle`] is a static set), this function does not take `self`.
-    /// Although that requires splitting [`Bundle`] functionality
-    /// into two functions (which is more susceptible to errors),
-    /// that allows operating on [`Bundle`]s as on types (statically) through `Bundle::component_ids`.
+    /// This function should return iterator with length of `<self as Bundle>::SIZE`.
     ///
-    fn component_ids() -> [ComponentId; N];
-    /// Consumes itself and returns iterator of [`BoxedComponent`]s.
+    fn component_ids() -> impl Iterator<Item = ComponentId>;
+
+    /// This method should add all of the components of a bundle to the entity.
+    /// Tha could be done by sequentially calling `EntityComponentStorage::insert_component` for each component in a bundle.
+    /// Since that requires statically knowing component types, this could only be done from this function.
     ///
-    fn boxed_components(self) -> [BoxedComponent; N];
+    fn add_to_entity(
+        self,
+        entity_id: EntityId,
+        entity_component_storage: &mut EntityComponentStorage,
+    );
 }
-impl<T: Component> Bundle<1> for T {
-    fn component_ids() -> [ComponentId; 1] {
-        [ComponentId::of::<T>()]
+impl<T: Component> Bundle for T {
+    const SIZE: usize = 1;
+
+    fn component_ids() -> impl Iterator<Item = ComponentId> {
+        once(ComponentId::of::<T>())
     }
-    fn boxed_components(self) -> [BoxedComponent; 1] {
-        [Box::new(self)]
+
+    fn add_to_entity(
+        self,
+        entity_id: EntityId,
+        entity_component_storage: &mut EntityComponentStorage,
+    ) {
+        let _ = entity_component_storage.insert_component(entity_id, self);
     }
 }
 /// [`impl_bundle`] macro implements [`Bundle`] trait for tuples.
 ///
 macro_rules! impl_bundle {
-    ($size:expr => $(($t:ident, $index:tt)),* $(,)?) => {
-        impl<$($t,)*> Bundle<$size> for ($($t,)*)
+    ($(($t:ident, $index:tt)),* $(,)?) => {
+        impl<$($t,)*> Bundle for ($($t,)*)
         where
-            $($t: Component,)*
+            $($t: Bundle,)*
         {
-            fn component_ids() -> [ComponentId; $size] {
-                [$(ComponentId::of::<$t>(),)*]
+            const SIZE: usize = $($t::SIZE + )* 0;
+
+            fn component_ids() -> impl Iterator<Item = ComponentId> {
+                empty()$(.chain($t::component_ids()))*
             }
-            fn boxed_components(self) -> [BoxedComponent; $size] {
-                [$(Box::new(self.$index),)*]
+
+            fn add_to_entity(
+                self,
+                _entity_id: EntityId,
+                _entity_component_storage: &mut EntityComponentStorage
+            ) {
+                $(let _ = self.$index.add_to_entity(_entity_id, _entity_component_storage);)*
             }
         }
     };
 }
 seq!(SIZE in 0..=16 {
-    #(seq!(N in 0..SIZE { impl_bundle!(SIZE => #((C~N, N),)*); });)*
+    #(
+        seq!(N in 0..SIZE {
+            impl_bundle!(#((C~N, N),)*);
+        });
+    )*
 });
 
-/// Type alias for `(ComponentId, BoxedComponent)`.
-///
-/// When [`Bundle`] is used, most of the time both the [`ComponentId`] and the [`BoxedComponent`]
-/// are needed; this type alias is specifically for those situations.
-///
-/// [`bundled_components`] function expresses that need - check docs for more information.
-///
-pub type BundledComponent = (ComponentId, BoxedComponent);
-/// [`bundled_components`] function zips two arrays of [`Bundle`] together.
-///
-/// Although functionality of [`Bundle`] is split in two functions
-/// (`Bundle::component_ids` does not require `self`, which allows operating on [`Bundle`]s as on types),
-/// it is still common to use those two arrays simultaneously, which could be done through this function.
-///
-/// If you only need an `Iterator` that is a result of a zip, manual zipping would be faster.
-///
-pub fn bundled_components<B: Bundle<N>, const N: usize>(bundle: B) -> [BundledComponent; N] {
-    struct ZSTComponent;
-    impl Component for ZSTComponent {}
-
-    let component_ids = B::component_ids();
-    let mut boxed_components = bundle.boxed_components();
-    from_fn(|i| {
-        (
-            component_ids[i],
-            replace(&mut boxed_components[i], Box::new(ZSTComponent)),
-        )
-    })
-}
+// submodules and public re-exports
+pub use super::storages::EntityComponentStorage;

@@ -1,14 +1,78 @@
 //! Submodule that implement [`EntityComponentStorage`].
 //!
 
-use super::{IdMap, IdSet, NoOpHasherState};
+use super::{NoOpHasherState, TypeIdMap, TypeIdSet};
 use crate::gamecore::{
-    components::{BoxedComponent, BundledComponent, ComponentId},
+    components::{Bundle, Component, ComponentId},
     entities::{EntityId, EntityMut, EntityRef},
 };
+use std::{any::Any, array::from_fn};
+
+/// In `entity_component_storage`, [`DynVec`] represents type-erased `Vec<Option<T>>`.
+///
+#[derive(Debug)]
+struct DynVec {
+    /// Type-erased vec.
+    ///
+    vec: Box<dyn Any>,
+
+    /// Function that allows removing item at exact position in type-erased vec.
+    ///
+    /// This function is created when the [`DynVec`] is initialized,
+    /// and so it 'records' the type information while remaining type-erased for the end user of [`DynVec`].
+    ///
+    remove_at_fn: fn(&mut DynVec, usize),
+}
+impl DynVec {
+    /// Creates function that could operate on type-erased vec by internally recording required type.
+    ///
+    fn remove_at_fn<T: Component>() -> fn(&mut DynVec, usize) {
+        |this: &mut DynVec, i: usize| {
+            let vec = this
+                .vec
+                .downcast_mut::<Vec<Option<T>>>()
+                .expect("Correct type was recorded at initialization");
+            if i < vec.len() {
+                vec[i] = None;
+            }
+        }
+    }
+
+    /// Creates new [`DynVec`] that will represent type-erased `Vec<Option<C>>`.
+    ///
+    fn new<C: Component>() -> DynVec {
+        DynVec {
+            vec: Box::new(Vec::<Option<C>>::new()),
+
+            remove_at_fn: DynVec::remove_at_fn::<C>(),
+        }
+    }
+
+    /// Downcasts [`DynVec`] to vector.
+    ///
+    fn downcast<C: Component>(self) -> Result<Vec<Option<C>>, DynVec> {
+        match self.vec.downcast::<Vec<Option<C>>>() {
+            Ok(vec) => Ok(*vec),
+            Err(vec) => Err(DynVec {
+                vec,
+                remove_at_fn: self.remove_at_fn,
+            }),
+        }
+    }
+    /// Downcasts [`DynVec`] reference to `&Vec<Option<C>>`.
+    ///
+    fn downcast_ref<C: Component>(&self) -> Option<&Vec<Option<C>>> {
+        self.vec.downcast_ref::<Vec<Option<C>>>()
+    }
+    /// Downcasts [`DynVec`] mutable reference to `&mut Vec<Option<C>>`.
+    ///
+    fn downcast_mut<C: Component>(&mut self) -> Option<&mut Vec<Option<C>>> {
+        self.vec.downcast_mut::<Vec<Option<C>>>()
+    }
+}
 
 /// [`EntityComponentStorage`] is a column-oriented structure-of-arrays based storage
-/// that maps entities to their [`Component`](super::components::Component)s.
+/// that maps entities to their [`Component`]s.
 ///
 /// Conceptually, [`EntityComponentStorage`] can be thought of as an `HashMap<ComponentId, Vec<Option<BoxedComponent>>>`,
 /// where each `Vec` contains components of one type that belong to different entities.
@@ -18,7 +82,7 @@ use crate::gamecore::{
 /// and each column corresponds to a single `Component`
 /// (i.e. every `Vec` contains all `Component`s of one type that belong to different entities).
 ///
-/// Fetching components from a table involves fetching the associated column for a `Component` type
+/// Fetching components from a table involves fetching the associated column for a [`Component`] type
 /// (via its [`ComponentId`]), then fetching the entity's row within that column.
 ///
 /// # Performance
@@ -31,11 +95,13 @@ use crate::gamecore::{
 ///
 /// # Note
 /// This collection is designed to provide more fine-grained control over entity-component storage.
-/// That results in very verbose interface (heavy usage of `impl Iterator` to allow dynamic collections).
-/// Most of the time you should use [`EntityMut`] or its readonly counterpart and [`Scene`](super::scenes::Scene)
-/// to get nice typed API for operations.
-/// Although examples in docs for [`EntityComponentStorage`] show usage of bare storage interface,
-/// it is not the recommended way of doing such operations.
+/// Most of the time you should use [`EntityMut`] or its readonly counterpart.
+/// For example, most storage functions that require [`EntityId`] do nothing
+/// if the entity with that id is not present.
+/// Checking whether that function early returned is left for the user
+/// (`EntityComponentStorage::contains_entity` will tell if the entity id is correct).
+/// Using [`EntityMut`]/[`EntityRef`], however, resolves that ambiguity,
+/// because those references always point at correct entities with correct [`EntityId`]s.
 ///
 #[derive(Debug, Default)]
 pub struct EntityComponentStorage {
@@ -44,11 +110,14 @@ pub struct EntityComponentStorage {
     max_vacant_index: usize,
     /// Set of removed entities.
     ///
-    removed_entities: IdSet<EntityId>,
+    removed_entities: TypeIdSet<EntityId>,
 
     /// Table that holds all components.
     ///
-    table: IdMap<ComponentId, Vec<Option<BoxedComponent>>>,
+    /// For each individual key/value pair where key is `TypeId::of::<T>()`,
+    /// value would be `DynVec` with internal type of `Vec<T>`.
+    ///
+    table: TypeIdMap<ComponentId, DynVec>,
 }
 impl EntityComponentStorage {
     /// Initializes new [`EntityComponentStorage`].
@@ -64,9 +133,9 @@ impl EntityComponentStorage {
     pub fn new() -> Self {
         EntityComponentStorage {
             max_vacant_index: 0,
-            removed_entities: IdSet::with_hasher(NoOpHasherState),
+            removed_entities: TypeIdSet::with_hasher(NoOpHasherState),
 
-            table: IdMap::with_hasher(NoOpHasherState),
+            table: TypeIdMap::with_hasher(NoOpHasherState),
         }
     }
 
@@ -77,113 +146,59 @@ impl EntityComponentStorage {
         self.removed_entities.clear();
         self.table.clear();
     }
-
-    /// Inserts new entity supplying it with components.
+}
+// entities
+impl EntityComponentStorage {
+    /// Finds suitable [`EntityId`]s for new entities.
     ///
-    /// Main feature of this function is that it allows to pass additional capacity,
-    /// which will allow for allocation optimizations.
-    ///
-    fn insert_entity_with_capacity(
-        &mut self,
-        components: impl Iterator<Item = BundledComponent>,
-        entities_count_capacity: usize,
-    ) -> EntityMut {
-        let entity_id = match self.removed_entities.iter().next().copied() {
+    fn obtain_entity_ids<const N: usize>(&mut self) -> [EntityId; N] {
+        from_fn(|_| match self.removed_entities.iter().next().copied() {
             Some(id) => {
                 let _ = self.removed_entities.remove(&id);
                 id
             }
             None => {
-                let reserved_id = EntityId(self.max_vacant_index);
+                let new_id = EntityId(self.max_vacant_index);
                 self.max_vacant_index += 1;
-                reserved_id
+                new_id
             }
-        };
-
-        for (component_id, boxed_component) in components {
-            let _ = self.insert_bundled_component_with_capacity(
-                entity_id,
-                component_id,
-                boxed_component,
-                entities_count_capacity,
-            );
-        }
-
-        EntityMut::new(entity_id, self)
+        })
     }
 
-    /// Inserts component into existing entity.
+    /// Inserts empty entity.
+    /// Equivalent of `entity_component_storage.insert_entity(())`.
     ///
-    /// Main feature of this function is that it allows to pass additional capacity,
-    /// which will allow for allocation optimizations.
-    ///
-    fn insert_bundled_component_with_capacity(
-        &mut self,
-        entity_id: EntityId,
-        component_id: ComponentId,
-        boxed_component: BoxedComponent,
-        entities_count_capacity: usize,
-    ) -> Option<BoxedComponent> {
-        let components_column = self
-            .table
-            .entry(component_id)
-            .or_insert(Vec::with_capacity(entities_count_capacity));
-
-        let entity_index = entity_id.0;
-        if components_column.len() <= entity_index {
-            components_column.resize_with(
-                if entities_count_capacity == 0 {
-                    entity_index + 1
-                } else {
-                    entities_count_capacity
-                },
-                || None,
-            );
-        }
-
-        components_column[entity_index].replace(boxed_component)
+    pub fn insert_empty_entity(&mut self) -> EntityMut {
+        self.insert_entity(())
     }
-
     /// Inserts entity with components into [`EntityComponentStorage`]
     /// and returns mutable reference to it, so it could be further modified.
     ///
     /// # Examples
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, bundled_components};
+    /// # use ggengine::gamecore::components::Component;
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
     ///
+    /// struct Health(u32);
+    /// impl Component for Health {}
+    ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.insert_entity(
-    ///     bundled_components((Player,)).into_iter()
-    /// ).id();
+    /// let player: EntityId = storage.insert_entity((Player, Health(10))).id();
     /// ```
     ///
-    /// You can insert empty entity to defer initialization by passing `empty()`:
-    /// ```rust
-    /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::entities::EntityId;
-    /// # use std::iter::empty;
-    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
-    ///
-    /// let player: EntityId = storage.insert_entity(
-    ///     empty()
-    /// ).id();
-    /// ```
-    ///
-    pub fn insert_entity(
-        &mut self,
-        components: impl Iterator<Item = BundledComponent>,
-    ) -> EntityMut {
-        self.insert_entity_with_capacity(components, 0)
+    pub fn insert_entity<B: Bundle>(&mut self, components: B) -> EntityMut {
+        let entity_id = self.obtain_entity_ids::<1>()[0];
+        components.add_to_entity(entity_id, self);
+        EntityMut::new(entity_id, self)
     }
     /// Inserts multiple entities with components into [`EntityComponentStorage`]
     /// and returns immutable references to those entities.
     ///
-    /// It is more efficient than calling `EntityComponentStorage::insert_entity` in a loop.
+    /// It is slightly more efficient than calling `EntityComponentStorage::insert_entity` in a loop.
     ///
     /// # Note
     /// This function can only insert entities with same components type.
@@ -191,142 +206,113 @@ impl EntityComponentStorage {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, bundled_components};
-    /// # use ggengine::gamecore::entities::{EntityId, EntityRef};
+    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::entities::EntityRef;
     /// struct NPC;
     /// impl Component for NPC {}
     ///
     /// struct Name(&'static str);
     /// impl Component for Name {}
     ///
+    /// struct Health(u32);
+    /// impl Component for Health {}
+    ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let npcs: Vec<EntityRef> = storage.insert_entities(vec![
-    ///     bundled_components((NPC, Name("Alice"))).into_iter(),
-    ///     bundled_components((NPC, Name("Bob"))).into_iter(),
-    ///     bundled_components((NPC, Name("Charlie"))).into_iter()
-    /// ]).collect::<Vec<EntityRef>>();
+    /// let npcs: [EntityRef; 3] = storage.insert_entities([
+    ///     (NPC, Name("Alice"), Health(5)),
+    ///     (NPC, Name("Bob"), Health(10)),
+    ///     (NPC, Name("Charlie"), Health(15))
+    /// ]);
     /// ```
     ///
-    pub fn insert_entities(
+    pub fn insert_entities<B: Bundle, const N: usize>(
         &mut self,
-        many_components: impl IntoIterator<Item = impl Iterator<Item = BundledComponent>>,
-    ) -> impl Iterator<Item = EntityRef> {
-        let many_components_iter = many_components.into_iter();
-        let adding = {
-            let (lower, upper) = many_components_iter.size_hint();
-            upper.unwrap_or(lower)
-        };
-        let resizing = if adding >= self.removed_entities.len() {
-            let vacant = self.removed_entities.len();
-            let reserved = self.max_vacant_index - vacant;
-            reserved + (adding - vacant)
-        } else {
-            0
-        };
-
-        let mut ids = Vec::new();
-        for components in many_components_iter {
-            ids.push(self.insert_entity_with_capacity(components, resizing).id());
+        many_components: [B; N],
+    ) -> [EntityRef; N] {
+        let ids = self.obtain_entity_ids::<N>();
+        for (entity_id, components) in ids.into_iter().rev().zip(many_components.into_iter().rev())
+        {
+            components.add_to_entity(entity_id, self);
         }
-        ids.into_iter().map(|id| EntityRef::new(id, self))
+        ids.map(|entity_id| EntityRef::new(entity_id, self))
     }
+
     /// Removes entity from [`EntityComponentStorage`].
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, bundled_components};
+    /// # use ggengine::gamecore::components::Component;
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.insert_entity(
-    ///     bundled_components((Player,)).into_iter()
-    /// ).id();
-    /// storage.remove_entity(player);
-    /// ```
+    /// let player: EntityId = storage.insert_entity(Player).id();
     ///
-    pub fn remove_entity(&mut self, entity_id: EntityId) -> bool {
-        if self.removed_entities.contains(&entity_id) {
-            return false;
-        }
-        let _ = self.removed_entities.insert(entity_id);
-
-        let entity_index = entity_id.0;
-        for component_column in self.table.values_mut() {
-            if component_column.len() > entity_index {
-                component_column[entity_index] = None;
-            }
-        }
-        true
-    }
-    /// Returns number of entities that are currently present in the storage.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, bundled_components};
-    /// # use ggengine::gamecore::entities::{EntityId, EntityRef};
-    /// struct NPC;
-    /// impl Component for NPC {}
-    ///
-    /// struct Name(&'static str);
-    /// impl Component for Name {}
-    ///
-    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
-    ///
-    /// let npcs: Vec<EntityRef> = storage.insert_entities(vec![
-    ///     bundled_components((NPC, Name("Alice"))).into_iter(),
-    ///     bundled_components((NPC, Name("Bob"))).into_iter(),
-    ///     bundled_components((NPC, Name("Charlie"))).into_iter()
-    /// ]).collect::<Vec<EntityRef>>();
-    /// let npc: EntityId = npcs[0].id();
-    /// assert_eq!(storage.entities_count(), 3);
-    /// storage.remove_entity(npc);
-    /// assert_eq!(storage.entities_count(), 2);
-    ///
-    pub fn entities_count(&self) -> usize {
-        self.max_vacant_index - self.removed_entities.len()
-    }
-    /// Returns whether an entity with given id is currently stored or not.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, bundled_components};
-    /// # use ggengine::gamecore::entities::EntityId;
-    /// struct Player;
-    /// impl Component for Player {}
-    ///
-    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
-    ///
-    /// let player: EntityId = storage.insert_entity(
-    ///     bundled_components((Player,)).into_iter()
-    /// ).id();
     /// assert!(storage.contains_entity(player));
-    ///
     /// storage.remove_entity(player);
     /// assert!(!storage.contains_entity(player));
     /// ```
     ///
+    pub fn remove_entity(&mut self, entity_id: EntityId) -> bool {
+        if !self.contains_entity(entity_id) {
+            return false;
+        }
+        let _ = self.removed_entities.insert(entity_id);
+
+        self.clear_entity(entity_id);
+        true
+    }
+
+    /// Removes all components from entity.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
+    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::entities::EntityId;
+    /// struct Player;
+    /// impl Component for Player {}
+    ///
+    /// struct Health(u32);
+    /// impl Component for Health {}
+    ///
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    ///
+    /// let player: EntityId = storage.insert_entity((Player, Health(10))).id();
+    /// storage.clear_entity(player);
+    /// assert!(storage.contains_entity(player));
+    /// assert!(!storage.contains_component::<Player>(player));
+    /// assert!(!storage.contains_component::<Health>(player));
+    /// ```
+    ///
+    pub fn clear_entity(&mut self, entity_id: EntityId) {
+        if !self.contains_entity(entity_id) {
+            return;
+        }
+        for component_column in self.table.values_mut() {
+            (component_column.remove_at_fn)(component_column, entity_id.0)
+        }
+    }
+
+    /// Returns whether an entity with given id is currently stored or not.
+    ///
     pub fn contains_entity(&self, entity_id: EntityId) -> bool {
         entity_id.0 < self.max_vacant_index && !self.removed_entities.contains(&entity_id)
     }
+
     /// Returns immutable reference to entity in [`EntityComponentStorage`] if present.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::entities::{EntityId, EntityRef};
-    /// # use std::iter::empty;
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.insert_entity(
-    ///     empty()
-    /// ).id();
+    /// let player: EntityId = storage.insert_empty_entity().id();
     /// let player_ref: EntityRef = storage.entity(player).expect("Entity was inserted");
     /// ```
     ///
@@ -337,48 +323,15 @@ impl EntityComponentStorage {
             None
         }
     }
-    /// Returns references to all entities that are inserted in the storage.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, bundled_components};
-    /// # use ggengine::gamecore::entities::EntityId;
-    /// struct NPC;
-    /// impl Component for NPC {}
-    ///
-    /// struct Name(&'static str);
-    /// impl Component for Name {}
-    ///
-    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
-    ///
-    /// let npcs1: Vec<EntityId> = storage.insert_entities(vec![
-    ///     bundled_components((NPC, Name("Alice"))).into_iter(),
-    ///     bundled_components((NPC, Name("Bob"))).into_iter(),
-    ///     bundled_components((NPC, Name("Charlie"))).into_iter()
-    /// ]).map(|entity| entity.id()).collect::<Vec<EntityId>>();
-    /// let npcs2: Vec<EntityId> = storage.all_entities()
-    ///     .map(|entity| entity.id()).collect::<Vec<EntityId>>();
-    /// for (id1, id2) in npcs1.iter().zip(npcs2.iter()) {
-    ///     assert_eq!(id1, id2);
-    /// }
-    /// ```
-    ///
-    pub fn all_entities(&self) -> impl Iterator<Item = EntityRef> {
-        (0..self.max_vacant_index).filter_map(|id| self.entity(EntityId(id)))
-    }
     /// Returns mutable reference to entity in [`EntityComponentStorage`] if present.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
     /// # use ggengine::gamecore::entities::{EntityId, EntityMut};
-    /// # use std::iter::empty;
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.insert_entity(
-    ///     empty()
-    /// ).id();
+    /// let player: EntityId = storage.insert_empty_entity().id();
     /// let player_mut: EntityMut = storage.entity_mut(player).expect("Entity was inserted");
     /// ```
     ///
@@ -390,41 +343,111 @@ impl EntityComponentStorage {
         }
     }
 
+    /// Returns all the [`EntityId`] that are valid.
+    /// That allows iterating over all entities in a storage.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
+    /// # use ggengine::gamecore::entities::EntityId;
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    ///
+    /// let id1 = storage.insert_empty_entity().id();
+    /// let id2 = storage.insert_empty_entity().id();
+    /// let id3 = storage.insert_empty_entity().id();
+    ///
+    /// let ids: Vec<EntityId> = storage.entity_ids();
+    /// assert_eq!(ids, vec![id1, id2, id3]);
+    /// ```
+    ///
+    pub fn entity_ids(&self) -> Vec<EntityId> {
+        let mut vec = Vec::new();
+        for index in 0..self.max_vacant_index {
+            let entity_id = EntityId(index);
+            if self.contains_entity(entity_id) {
+                vec.push(entity_id);
+            }
+        }
+        vec
+    }
+
+    /// Returns number of entities that are currently present in the storage.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
+    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::entities::{EntityId, EntityRef};
+    /// struct NPC;
+    /// impl Component for NPC {}
+    ///
+    /// struct Name(&'static str);
+    /// impl Component for Name {}
+    ///
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    ///
+    /// let npcs: [EntityRef; 3] = storage.insert_entities([
+    ///     (NPC, Name("Alice")),
+    ///     (NPC, Name("Bob")),
+    ///     (NPC, Name("Charlie"))
+    /// ]);
+    /// let npc: EntityId = npcs[0].id();
+    /// assert_eq!(storage.entity_count(), 3);
+    /// storage.remove_entity(npc);
+    /// assert_eq!(storage.entity_count(), 2);
+    /// ```
+    ///
+    pub fn entity_count(&self) -> usize {
+        self.max_vacant_index - self.removed_entities.len()
+    }
+}
+// components
+impl EntityComponentStorage {
     /// Inserts component into given entity and returns old value if present.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, ComponentId};
+    /// # use ggengine::gamecore::components::Component;
     /// # use ggengine::gamecore::entities::EntityId;
-    /// # use std::iter::empty;
     /// struct Player;
     /// impl Component for Player {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.insert_entity(
-    ///     empty()
-    /// ).id();
-    /// storage.insert_component(player, ComponentId::of::<Player>(), Box::new(Player));
+    /// let player: EntityId = storage.insert_empty_entity().id();
+    /// storage.insert_component(player, Player);
     /// ```
     ///
-    pub fn insert_component(
+    pub fn insert_component<C: Component>(
         &mut self,
         entity_id: EntityId,
-        component_id: ComponentId,
-        boxed_component: BoxedComponent,
-    ) -> Option<BoxedComponent> {
-        self.insert_bundled_component_with_capacity(entity_id, component_id, boxed_component, 0)
+        component: C,
+    ) -> Option<C> {
+        if !self.contains_entity(entity_id) {
+            return None;
+        }
+
+        let component_column = self
+            .table
+            .entry(ComponentId::of::<C>())
+            .or_insert(DynVec::new::<C>())
+            .downcast_mut::<C>()
+            .expect("`DynVec` is of correct type");
+
+        let entity_index = entity_id.0;
+        if component_column.len() <= entity_index {
+            component_column.resize_with(entity_index + 1, || None);
+        }
+        component_column[entity_index].replace(component)
     }
     /// Inserts components into given entity.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, bundled_components};
+    /// # use ggengine::gamecore::components::Component;
     /// # use ggengine::gamecore::entities::EntityId;
-    /// # use std::iter::empty;
     /// struct Player;
     /// impl Component for Player {}
     ///
@@ -433,55 +456,46 @@ impl EntityComponentStorage {
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.insert_entity(
-    ///     empty()
-    /// ).id();
+    /// let player: EntityId = storage.insert_empty_entity().id();
     /// storage.insert_components(
     ///     player,
-    ///     bundled_components((Player, Health(10))).into_iter()
+    ///     (Player, Health(10))
     /// );
     /// ```
     ///
-    pub fn insert_components(
-        &mut self,
-        entity_id: EntityId,
-        components: impl Iterator<Item = BundledComponent>,
-    ) {
-        for (component_id, boxed_component) in components {
-            let _ = self.insert_bundled_component_with_capacity(
-                entity_id,
-                component_id,
-                boxed_component,
-                0,
-            );
+    pub fn insert_components<B: Bundle>(&mut self, entity_id: EntityId, components: B) {
+        if !self.contains_entity(entity_id) {
+            return;
         }
+        components.add_to_entity(entity_id, self)
     }
+
     /// Removes component from an entity and returns the old value if present.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, ComponentId, bundled_components};
+    /// # use ggengine::gamecore::components::Component;
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let player: EntityId = storage.insert_entity(
-    ///     bundled_components((Player,)).into_iter()
-    /// ).id();
-    /// storage.remove_component(player, ComponentId::of::<Player>());
+    /// let player: EntityId = storage.insert_entity(Player).id();
+    /// storage.remove_component::<Player>(player);
     /// assert!(storage.contains_entity(player));
+    /// assert!(!storage.contains_component::<Player>(player));
     /// ```
     ///
-    pub fn remove_component(
-        &mut self,
-        entity_id: EntityId,
-        component_id: ComponentId,
-    ) -> Option<BoxedComponent> {
+    pub fn remove_component<C: Component>(&mut self, entity_id: EntityId) -> Option<C> {
+        if !self.contains_entity(entity_id) {
+            return None;
+        }
         self.table
-            .get_mut(&component_id)?
+            .get_mut(&ComponentId::of::<C>())?
+            .downcast_mut::<C>()
+            .expect("`DynVec` is of correct type")
             .get_mut(entity_id.0)?
             .take()
     }
@@ -490,150 +504,63 @@ impl EntityComponentStorage {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, ComponentId, bundled_components};
+    /// # use ggengine::gamecore::components::Component;
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
-    ///
-    /// struct Name(String);
-    /// impl Component for Name {}
-    ///
-    /// struct Health(u32);
-    /// impl Component for Health {}
-    ///
-    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
-    ///
-    /// let player: EntityId = storage.insert_entity(
-    ///     bundled_components((Player, Name("Alice".to_string()), Health(10),)).into_iter()
-    /// ).id();
-    /// storage.remove_components(
-    ///     player,
-    ///     [ComponentId::of::<Player>(), ComponentId::of::<Health>()].into_iter()
-    /// );
-    /// assert!(storage.contains_entity(player));
-    /// assert!(!storage.contains_component(player, ComponentId::of::<Player>()));
-    /// assert!(storage.contains_component(player, ComponentId::of::<Name>()));
-    /// assert!(!storage.contains_component(player, ComponentId::of::<Health>()));
-    /// ```
-    ///
-    pub fn remove_components(
-        &mut self,
-        entity_id: EntityId,
-        component_ids: impl Iterator<Item = ComponentId>,
-    ) {
-        for component_id in component_ids {
-            let _ = self.remove_component(entity_id, component_id);
-        }
-    }
-    /// Removes all components from entity.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, ComponentId, bundled_components};
-    /// # use ggengine::gamecore::entities::EntityId;
-    /// struct Player;
-    /// impl Component for Player {}
-    ///
-    /// struct Health(u32);
-    /// impl Component for Health {}
-    ///
-    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
-    ///
-    /// let player: EntityId = storage.insert_entity(
-    ///     bundled_components((Player, Health(10))).into_iter()
-    /// ).id();
-    /// storage.remove_all_components(player);
-    /// assert!(storage.contains_entity(player));
-    /// assert!(!storage.contains_component(player, ComponentId::of::<Player>()));
-    /// assert!(!storage.contains_component(player, ComponentId::of::<Health>()));
-    /// ```
-    ///
-    pub fn remove_all_components(&mut self, entity_id: EntityId) {
-        let entity_index = entity_id.0;
-        for component_column in self.table.values_mut() {
-            if entity_index < component_column.len() {
-                component_column[entity_index] = None;
-            }
-        }
-    }
-    /// Returns whether this component is present in an entity or not.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, ComponentId, bundled_components};
-    /// # use ggengine::gamecore::entities::EntityId;
-    /// struct Player;
-    /// impl Component for Player {}
-    ///
-    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
-    ///
-    /// let player: EntityId = storage.insert_entity(
-    ///     bundled_components((Player,)).into_iter()
-    /// ).id();
-    /// assert!(storage.contains_component(player, ComponentId::of::<Player>()));
-    ///
-    /// storage.remove_component(player, ComponentId::of::<Player>());
-    /// assert!(!storage.contains_component(player, ComponentId::of::<Player>()));
-    /// ```
-    ///
-    pub fn contains_component(&self, entity_id: EntityId, component_id: ComponentId) -> bool {
-        self.table
-            .get(&component_id)
-            .and_then(|component_column| component_column.get(entity_id.0))
-            .is_some_and(|component| component.is_some())
-    }
-    /// Extracts all component of one type from storage.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, bundled_components, ComponentId, BoxedComponent};
-    /// # use ggengine::gamecore::entities::EntityRef;
-    /// struct NPC;
-    /// impl Component for NPC {}
     ///
     /// struct Name(&'static str);
     /// impl Component for Name {}
     ///
+    /// struct Health(u32);
+    /// impl Component for Health {}
+    ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let npcs: Vec<EntityRef> = storage.insert_entities(vec![
-    ///     bundled_components((NPC, Name("Alice"))).into_iter(),
-    ///     bundled_components((NPC, Name("Bob"))).into_iter(),
-    ///     bundled_components((NPC, Name("Charlie"))).into_iter()
-    /// ]).collect::<Vec<EntityRef>>();
-    /// let names: Vec<BoxedComponent> = storage.components_take(ComponentId::of::<Name>())
-    ///     .expect("Component is present")
-    ///     .collect::<Vec<BoxedComponent>>();
-    /// assert_eq!(names.len(), 3);
+    /// let player: EntityId = storage.insert_entity(
+    ///     (Player, Name("Alice"), Health(10))
+    /// ).id();
+    /// storage.remove_components::<(Player, Health)>(player);
+    /// assert!(storage.contains_entity(player));
+    /// assert!(!storage.contains_component::<Player>(player));
+    /// assert!(storage.contains_component::<Name>(player));
+    /// assert!(!storage.contains_component::<Health>(player));
     /// ```
     ///
-    pub fn components_take(
-        &mut self,
-        component_id: ComponentId,
-    ) -> Option<impl Iterator<Item = BoxedComponent> + use<'_>> {
-        Some(
-            self.table
-                .remove(&component_id)?
-                .into_iter()
-                .enumerate()
-                .filter_map(|(id, component)| {
-                    if !self.removed_entities.contains(&EntityId(id)) {
-                        component
-                    } else {
-                        None
-                    }
-                }),
-        )
+    pub fn remove_components<B: Bundle>(&mut self, entity_id: EntityId) {
+        if !self.contains_entity(entity_id) {
+            return;
+        }
+        for component_id in B::component_ids() {
+            let Some(component_column) = self.table.get_mut(&component_id) else {
+                continue;
+            };
+            (component_column.remove_at_fn)(component_column, entity_id.0);
+        }
     }
+
+    /// Returns whether this component is present in an entity or not.
+    ///
+    pub fn contains_component<C: Component>(&self, entity_id: EntityId) -> bool {
+        !self.removed_entities.contains(&entity_id)
+            && self
+                .table
+                .get(&ComponentId::of::<C>())
+                .and_then(|component_column| {
+                    component_column
+                        .downcast_ref::<C>()
+                        .expect("`DynVec` is of correct type")
+                        .get(entity_id.0)
+                })
+                .is_some_and(|component| component.is_some())
+    }
+
     /// Returns immutable reference to the component of given entity if present.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, ComponentId, bundled_components};
+    /// # use ggengine::gamecore::components::Component;
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
@@ -644,68 +571,28 @@ impl EntityComponentStorage {
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
     /// let player: EntityId = storage.insert_entity(
-    ///     bundled_components((Player, Health(10))).into_iter()
+    ///     (Player, Health(10))
     /// ).id();
-    /// assert!(storage.component(player, ComponentId::of::<Health>()).is_some());
+    /// assert_eq!(storage.component::<Health>(player).expect("`Health` was inserted").0, 10);
     /// ```
     ///
-    pub fn component(
-        &self,
-        entity_id: EntityId,
-        component_id: ComponentId,
-    ) -> Option<&BoxedComponent> {
-        self.table.get(&component_id)?.get(entity_id.0)?.as_ref()
-    }
-    /// Returns immutable references to all components of one type.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, bundled_components, ComponentId, BoxedComponent};
-    /// # use ggengine::gamecore::entities::EntityRef;
-    /// struct NPC;
-    /// impl Component for NPC {}
-    ///
-    /// struct Name(&'static str);
-    /// impl Component for Name {}
-    ///
-    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
-    ///
-    /// let npcs: Vec<EntityRef> = storage.insert_entities(vec![
-    ///     bundled_components((NPC, Name("Alice"))).into_iter(),
-    ///     bundled_components((NPC, Name("Bob"))).into_iter(),
-    ///     bundled_components((NPC, Name("Charlie"))).into_iter()
-    /// ]).collect::<Vec<EntityRef>>();
-    /// let names: Vec<&BoxedComponent> = storage.components(ComponentId::of::<Name>())
-    ///     .expect("Component is present")
-    ///     .collect::<Vec<&BoxedComponent>>();
-    /// assert_eq!(names.len(), 3);
-    /// ```
-    ///
-    pub fn components(
-        &self,
-        component_id: ComponentId,
-    ) -> Option<impl Iterator<Item = &BoxedComponent>> {
-        Some(
-            self.table
-                .get(&component_id)?
-                .iter()
-                .enumerate()
-                .filter_map(|(id, component)| {
-                    if !self.removed_entities.contains(&EntityId(id)) {
-                        component.as_ref()
-                    } else {
-                        None
-                    }
-                }),
-        )
+    pub fn component<C: Component>(&self, entity_id: EntityId) -> Option<&C> {
+        if !self.contains_entity(entity_id) {
+            return None;
+        }
+        self.table
+            .get(&ComponentId::of::<C>())?
+            .downcast_ref::<C>()
+            .expect("`DynVec` is of correct type")
+            .get(entity_id.0)?
+            .as_ref()
     }
     /// Returns mutable reference to the component of given entity if present.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, ComponentId, bundled_components};
+    /// # use ggengine::gamecore::components::Component;
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
@@ -716,154 +603,114 @@ impl EntityComponentStorage {
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
     /// let player: EntityId = storage.insert_entity(
-    ///     bundled_components((Player, Health(10))).into_iter()
+    ///     (Player, Health(10))
     /// ).id();
-    /// assert!(storage.component_mut(player, ComponentId::of::<Health>()).is_some());
+    /// let component = storage.component_mut::<Health>(player).expect("`Health` was inserted");
+    /// component.0 = 15;
+    /// assert_eq!(storage.component::<Health>(player).expect("`Health` was inserted").0, 15);
     /// ```
     ///
-    pub fn component_mut(
-        &mut self,
-        entity_id: EntityId,
-        component_id: ComponentId,
-    ) -> Option<&mut BoxedComponent> {
+    pub fn component_mut<C: Component>(&mut self, entity_id: EntityId) -> Option<&mut C> {
+        if !self.contains_entity(entity_id) {
+            return None;
+        }
         self.table
-            .get_mut(&component_id)?
+            .get_mut(&ComponentId::of::<C>())?
+            .downcast_mut::<C>()
+            .expect("`DynVec` is of correct type")
             .get_mut(entity_id.0)?
             .as_mut()
     }
-    /// Returns mutable references to all components of one type.
+
+    /// Returns immutable references to all components of one type.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, bundled_components, ComponentId, BoxedComponent};
+    /// # use ggengine::gamecore::components::Component;
     /// # use ggengine::gamecore::entities::EntityRef;
+    /// #[derive(Debug, PartialEq)]
     /// struct NPC;
     /// impl Component for NPC {}
     ///
+    /// #[derive(Debug, PartialEq)]
     /// struct Name(&'static str);
     /// impl Component for Name {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let npcs: Vec<EntityRef> = storage.insert_entities(vec![
-    ///     bundled_components((NPC, Name("Alice"))).into_iter(),
-    ///     bundled_components((NPC, Name("Bob"))).into_iter(),
-    ///     bundled_components((NPC, Name("Charlie"))).into_iter()
-    /// ]).collect::<Vec<EntityRef>>();
-    /// let names: Vec<&mut BoxedComponent> = storage.components_mut(ComponentId::of::<Name>())
+    /// let npcs: [EntityRef; 3] = storage.insert_entities([
+    ///     (NPC, Name("Alice")),
+    ///     (NPC, Name("Bob")),
+    ///     (NPC, Name("Charlie"))
+    /// ]);
+    /// let names: Vec<&Name> = storage.components::<Name>()
     ///     .expect("Component is present")
-    ///     .collect::<Vec<&mut BoxedComponent>>();
-    /// assert_eq!(names.len(), 3);
+    ///     .collect::<Vec<&Name>>();
+    /// assert_eq!(names, vec![&Name("Alice"), &Name("Bob"), &Name("Charlie")]);
     /// ```
     ///
-    pub fn components_mut(
-        &mut self,
-        component_id: ComponentId,
-    ) -> Option<impl Iterator<Item = &mut BoxedComponent>> {
-        Some(
-            self.table
-                .get_mut(&component_id)?
-                .iter_mut()
-                .enumerate()
-                .filter_map(|(id, component)| {
-                    if !self.removed_entities.contains(&EntityId(id)) {
-                        component.as_mut()
-                    } else {
-                        None
-                    }
-                }),
-        )
+    pub fn components<C: Component>(&self) -> Option<impl Iterator<Item = &C>> {
+        let components = self
+            .table
+            .get(&ComponentId::of::<C>())?
+            .downcast_ref::<C>()
+            .expect("`DynVec` is of correct type")
+            .iter()
+            .enumerate()
+            .filter_map(|(index, component)| {
+                if !self.removed_entities.contains(&EntityId(index)) {
+                    component.as_ref()
+                } else {
+                    None
+                }
+            });
+        Some(components)
     }
-    /// This function is the `HashMap::get_disjoint_mut` analogue.
-    ///
-    /// This method has no typed counterpart, and thus, is only usable through the [`EntityComponentStorage`].
+    /// Returns immutable references to all components of one type.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, bundled_components, ComponentId, BoxedComponent};
+    /// # use ggengine::gamecore::components::Component;
     /// # use ggengine::gamecore::entities::EntityRef;
+    /// #[derive(Debug, PartialEq)]
     /// struct NPC;
     /// impl Component for NPC {}
     ///
+    /// #[derive(Debug, PartialEq)]
     /// struct Name(&'static str);
     /// impl Component for Name {}
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let npcs: Vec<EntityRef> = storage.insert_entities(vec![
-    ///     bundled_components((NPC, Name("Alice"))).into_iter(),
-    ///     bundled_components((NPC, Name("Bob"))).into_iter(),
-    ///     bundled_components((NPC, Name("Charlie"))).into_iter()
-    /// ]).collect::<Vec<EntityRef>>();
-    /// let components: [Vec<&mut BoxedComponent>; 2] = storage.components_disjoint_mut(
-    ///     [ComponentId::of::<NPC>(), ComponentId::of::<Name>()]
-    /// ).map(|components|
-    ///     components.expect("Component is present")
-    ///         .collect::<Vec<&mut BoxedComponent>>()
-    /// );
+    /// let npcs: [EntityRef; 3] = storage.insert_entities([
+    ///     (NPC, Name("Alice")),
+    ///     (NPC, Name("Bob")),
+    ///     (NPC, Name("Charlie"))
+    /// ]);
+    /// let mut names: Vec<&mut Name> = storage.components_mut::<Name>()
+    ///     .expect("Component is present")
+    ///     .collect::<Vec<&mut Name>>();
+    /// names[1].0 = "Brad";
+    /// assert_eq!(names, vec![&Name("Alice"), &Name("Brad"), &Name("Charlie")]);
     /// ```
     ///
-    pub fn components_disjoint_mut<const N: usize>(
-        &mut self,
-        component_ids: [ComponentId; N],
-    ) -> [Option<impl Iterator<Item = &mut BoxedComponent>>; N] {
-        self.table
-            .get_disjoint_mut(component_ids.each_ref())
-            .map(|option_component_column| {
-                option_component_column.map(|component_column| {
-                    component_column
-                        .iter_mut()
-                        .enumerate()
-                        .filter_map(|(id, component)| {
-                            if !self.removed_entities.contains(&EntityId(id)) {
-                                component.as_mut()
-                            } else {
-                                None
-                            }
-                        })
-                })
-            })
-    }
-    /// Gets a mutable reference to the component of given type if present,
-    /// otherwise inserts the component that is constructed by given closure and
-    /// returns mutable reference to it.
-    ///
-    /// # Example
-    /// ```rust
-    /// # use ggengine::gamecore::storages::EntityComponentStorage;
-    /// # use ggengine::gamecore::components::{Component, ComponentId, bundled_components};
-    /// # use ggengine::gamecore::entities::EntityId;
-    /// struct Player;
-    /// impl Component for Player {}
-    ///
-    /// struct Health(u32);
-    /// impl Component for Health {}
-    ///
-    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
-    ///
-    /// let player: EntityId = storage.insert_entity(
-    ///     bundled_components((Player,)).into_iter()
-    /// ).id();
-    /// let _ = storage.component_get_or_insert_with(
-    ///     player,
-    ///     ComponentId::of::<Health>(),
-    ///     || Box::new(Health(10))
-    /// );
-    /// assert!(storage.contains_component(player, ComponentId::of::<Health>()));
-    /// ```
-    ///
-    pub fn component_get_or_insert_with(
-        &mut self,
-        entity_id: EntityId,
-        component_id: ComponentId,
-        f: impl FnOnce() -> BoxedComponent,
-    ) -> &mut BoxedComponent {
-        if !self.contains_component(entity_id, component_id) {
-            let _ = self.insert_bundled_component_with_capacity(entity_id, component_id, f(), 0);
-        }
-        self.component_mut(entity_id, component_id)
-            .expect("Component was added if it was not already present")
+    pub fn components_mut<C: Component>(&mut self) -> Option<impl Iterator<Item = &mut C>> {
+        let components = self
+            .table
+            .get_mut(&ComponentId::of::<C>())?
+            .downcast_mut::<C>()
+            .expect("`DynVec` is of correct type")
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(index, component)| {
+                if !self.removed_entities.contains(&EntityId(index)) {
+                    component.as_mut()
+                } else {
+                    None
+                }
+            });
+        Some(components)
     }
 }
