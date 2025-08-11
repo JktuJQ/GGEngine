@@ -4,8 +4,7 @@
 use super::{NoOpHasherState, TypeIdMap};
 use crate::gamecore::resources::{Resource, ResourceId};
 
-/// [`ResourceStorage`] struct provides API
-/// for a storage of [`Resource`]s.
+/// [`ResourceStorage`] struct provides API for a storage of [`Resource`]s.
 ///
 #[derive(Debug, Default)]
 pub struct ResourceStorage {
@@ -72,7 +71,7 @@ impl ResourceStorage {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::storages::ResourceStorage;
-    /// # use ggengine::gamecore::resources::{Resource, ResourceId};
+    /// # use ggengine::gamecore::resources::Resource;
     /// struct Score(u32);
     /// impl Resource for Score {}
     ///
@@ -90,7 +89,7 @@ impl ResourceStorage {
         })
     }
 
-    /// Returns whether a resource of given type exists or not.
+    /// Returns whether a resource of given type is present or not.
     ///
     /// # Example
     /// ```rust

@@ -229,7 +229,7 @@ impl EntityMut<'_> {
     ///
     pub fn insert_many<B: Bundle>(&mut self, bundle: B) {
         self.entity_component_storage
-            .insert_components(self.entity_id, bundle)
+            .insert_many_components(self.entity_id, bundle)
     }
 
     /// Removes component from entity and returns old value if present.
@@ -280,7 +280,7 @@ impl EntityMut<'_> {
     ///
     pub fn remove_many<B: Bundle>(&mut self) {
         self.entity_component_storage
-            .remove_components::<B>(self.entity_id)
+            .remove_many_components::<B>(self.entity_id)
     }
 
     /// Removes all components from entity.

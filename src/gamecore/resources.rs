@@ -3,9 +3,6 @@
 //! and implements several basic resources used in games.
 //!
 
-// submodules and public re-exports
-pub use super::storages::ResourceStorage;
-
 use std::{
     any::{type_name, Any, TypeId},
     fmt,
@@ -83,21 +80,14 @@ impl fmt::Debug for dyn Resource {
         write!(f, "{:?}", type_name::<Self>())
     }
 }
-/// [`ResourceId`] id struct is needed to identify [`Resource`]s in [`Scene`](super::scenes::Scene).
-///
-/// It is assigned by the [`Scene`](super::scenes::Scene) in which this [`Resource`] is registered.
+/// [`ResourceId`] id struct is needed to identify [`Resource`]s in [`ResourceStorage`].
 ///
 /// # Usage
 /// Usage of this struct is fairly advanced.
 /// Most of the time you should use convenient statically typed API,
-/// which is provided by [`Scene`](super::scenes::Scene).
+/// which is provided by `ggengine`.
 ///
-/// Storages operate on ids, which allows them to provide more flexible interface.
-/// You can also try to trick type system by providing data that does not correspond to Rust type
-/// through id of existing 'fake' type.
-///
-/// That said, you should use typed API that `ggengine` exposes through several structs,
-/// not the API of `ggengine::storages` (unless absolutely needed).
+/// Storages internally operate on ids, which allows them to provide more flexible interface.
 ///
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ResourceId(TypeId);
@@ -108,3 +98,6 @@ impl ResourceId {
         ResourceId(TypeId::of::<R>())
     }
 }
+
+// submodules and public re-exports
+pub use super::storages::ResourceStorage;

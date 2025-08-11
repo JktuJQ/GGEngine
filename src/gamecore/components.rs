@@ -118,22 +118,14 @@ impl fmt::Debug for dyn Component {
         write!(f, "{:?}", type_name::<Self>())
     }
 }
-/// [`ComponentId`] id struct is needed to identify [`Component`]s in [`Scene`](super::scenes::Scene).
-///
-/// It is assigned by the [`Scene`](super::scenes::Scene) in
-/// which entity with this [`Component`] is registered.
+/// [`ComponentId`] id struct is needed to identify [`Component`]s in [`EntityComponentStorage`].
 ///
 /// # Usage
 /// Usage of this struct is fairly advanced.
 /// Most of the time you should use convenient statically typed API,
-/// which is provided by [`Scene`](super::scenes::Scene).
+/// which is provided by `ggengine`.
 ///
-/// Storages operate on ids, which allows them to provide more flexible interface.
-/// You can also try to trick type system by providing data that does not correspond to Rust type
-/// through id of existing 'fake' type.
-///
-/// That said, you should use typed API that `ggengine` exposes through several structs,
-/// not the API of `ggengine::storages` (unless absolutely needed).
+/// Storages internally operate on ids, which allows them to provide more flexible interface.
 ///
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ComponentId(TypeId);

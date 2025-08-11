@@ -219,14 +219,14 @@ impl EntityComponentStorage {
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let npcs: [EntityRef; 3] = storage.insert_entities([
+    /// let npcs: [EntityRef; 3] = storage.insert_many_entities([
     ///     (NPC, Name("Alice"), Health(5)),
     ///     (NPC, Name("Bob"), Health(10)),
     ///     (NPC, Name("Charlie"), Health(15))
     /// ]);
     /// ```
     ///
-    pub fn insert_entities<B: Bundle, const N: usize>(
+    pub fn insert_many_entities<B: Bundle, const N: usize>(
         &mut self,
         many_components: [B; N],
     ) -> [EntityRef; N] {
@@ -386,7 +386,7 @@ impl EntityComponentStorage {
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let npcs: [EntityRef; 3] = storage.insert_entities([
+    /// let npcs: [EntityRef; 3] = storage.insert_many_entities([
     ///     (NPC, Name("Alice")),
     ///     (NPC, Name("Bob")),
     ///     (NPC, Name("Charlie"))
@@ -457,13 +457,13 @@ impl EntityComponentStorage {
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
     /// let player: EntityId = storage.insert_empty_entity().id();
-    /// storage.insert_components(
+    /// storage.insert_many_components(
     ///     player,
     ///     (Player, Health(10))
     /// );
     /// ```
     ///
-    pub fn insert_components<B: Bundle>(&mut self, entity_id: EntityId, components: B) {
+    pub fn insert_many_components<B: Bundle>(&mut self, entity_id: EntityId, components: B) {
         if !self.contains_entity(entity_id) {
             return;
         }
@@ -520,14 +520,14 @@ impl EntityComponentStorage {
     /// let player: EntityId = storage.insert_entity(
     ///     (Player, Name("Alice"), Health(10))
     /// ).id();
-    /// storage.remove_components::<(Player, Health)>(player);
+    /// storage.remove_many_components::<(Player, Health)>(player);
     /// assert!(storage.contains_entity(player));
     /// assert!(!storage.contains_component::<Player>(player));
     /// assert!(storage.contains_component::<Name>(player));
     /// assert!(!storage.contains_component::<Health>(player));
     /// ```
     ///
-    pub fn remove_components<B: Bundle>(&mut self, entity_id: EntityId) {
+    pub fn remove_many_components<B: Bundle>(&mut self, entity_id: EntityId) {
         if !self.contains_entity(entity_id) {
             return;
         }
@@ -622,6 +622,48 @@ impl EntityComponentStorage {
             .as_mut()
     }
 
+    /// Removes all components of one type from all entities and returns them in an iterator.
+    /// Returns `None` if components of this type were never present in the storage or were removed by this function previously.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::storages::EntityComponentStorage;
+    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::entities::EntityRef;
+    /// #[derive(Debug, PartialEq)]
+    /// struct NPC;
+    /// impl Component for NPC {}
+    ///
+    /// #[derive(Debug, PartialEq)]
+    /// struct Name(&'static str);
+    /// impl Component for Name {}
+    ///
+    /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
+    ///
+    /// let npcs: [EntityRef; 3] = storage.insert_many_entities([
+    ///     (NPC, Name("Alice")),
+    ///     (NPC, Name("Bob")),
+    ///     (NPC, Name("Charlie"))
+    /// ]);
+    /// let names: Vec<Name> = storage.remove_components::<Name>()
+    ///     .expect("Component is present")
+    ///     .collect::<Vec<Name>>();
+    /// assert_eq!(names, vec![Name("Alice"), Name("Bob"), Name("Charlie")]);
+    /// for entity_id in storage.entity_ids() {
+    ///     assert!(!storage.contains_component::<Name>(entity_id));
+    /// }
+    /// ```
+    ///
+    pub fn remove_components<C: Component>(&mut self) -> Option<impl Iterator<Item = C>> {
+        self.table.remove(&ComponentId::of::<C>()).map(|dynvec| {
+            dynvec
+                .downcast::<C>()
+                .expect("`DynVec` is of correct type")
+                .into_iter()
+                .flatten()
+        })
+    }
+
     /// Returns immutable references to all components of one type.
     ///
     /// # Example
@@ -639,7 +681,7 @@ impl EntityComponentStorage {
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let npcs: [EntityRef; 3] = storage.insert_entities([
+    /// let npcs: [EntityRef; 3] = storage.insert_many_entities([
     ///     (NPC, Name("Alice")),
     ///     (NPC, Name("Bob")),
     ///     (NPC, Name("Charlie"))
@@ -684,7 +726,7 @@ impl EntityComponentStorage {
     ///
     /// let mut storage: EntityComponentStorage = EntityComponentStorage::new();
     ///
-    /// let npcs: [EntityRef; 3] = storage.insert_entities([
+    /// let npcs: [EntityRef; 3] = storage.insert_many_entities([
     ///     (NPC, Name("Alice")),
     ///     (NPC, Name("Bob")),
     ///     (NPC, Name("Charlie"))

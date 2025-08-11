@@ -66,3 +66,6 @@ pub use entity_component_storage::*;
 
 mod resource_storage;
 pub use resource_storage::*;
+
+mod event_storage;
+pub use event_storage::*;
