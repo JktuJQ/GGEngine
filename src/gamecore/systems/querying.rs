@@ -9,8 +9,9 @@
 
 use crate::gamecore::{
     components::Component,
+    events::Event,
     resources::Resource,
-    storages::{EntityComponentStorage, ResourceStorage},
+    storages::{EntityComponentStorage, EventStorage, ResourceStorage},
 };
 use seq_macro::seq;
 use std::{any::Any, marker::PhantomData};
@@ -20,18 +21,25 @@ use std::{any::Any, marker::PhantomData};
 pub trait QueryParameterMarker {}
 
 /// [`ComponentMarker`] zero-sized type serves as a parameter marker
-/// for queries that operate on [`Component`]s
+/// for queries that operate on [`Component`]s.
 ///
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct ComponentMarker;
 impl QueryParameterMarker for ComponentMarker {}
 
 /// [`ResourceMarker`] zero-sized type serves as a parameter marker
-/// for queries that operate on [`Resource`]s
+/// for queries that operate on [`Resource`]s.
 ///
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct ResourceMarker;
 impl QueryParameterMarker for ResourceMarker {}
+
+/// [`EventMarker`] zero-sized type serves as a parameter marker
+/// for queries that operate on [`Event`]s.
+///
+#[derive(Copy, Clone, Debug, Default)]
+pub struct EventMarker;
+impl QueryParameterMarker for EventMarker {}
 
 /// [`QueryParameter`] trait defines types that may be used for querying.
 ///
@@ -53,6 +61,13 @@ impl<R: Resource> QueryParameter<ResourceMarker> for &R {
 }
 impl<R: Resource> QueryParameter<ResourceMarker> for &mut R {
     type Inner = R;
+}
+
+impl<E: Event> QueryParameter<EventMarker> for &E {
+    type Inner = E;
+}
+impl<E: Event> QueryParameter<EventMarker> for &mut E {
+    type Inner = E;
 }
 
 /// [`QueryParameterTuple`] trait is defined for tuples of [`QueryParameter`]s which have the same marker.
@@ -137,6 +152,25 @@ pub struct ResourcesQuery<'a, T: ResourcesTuple> {
     /// Storage of resources.
     ///
     storage: &'a mut ResourceStorage,
+
+    /// `PhantomData` for 'unused' generic parameter.
+    ///
+    _tuples: PhantomData<T>,
+}
+
+/// [`EventsTuple`] trait is an alias for `QueryParameterTuple<EventMarker>`.
+/// It is implemented for tuples of [`QueryParameter`]s which are marked as events.
+///
+pub trait EventsTuple: QueryParameterTuple<EventMarker> {}
+impl<T: QueryParameterTuple<EventMarker>> EventsTuple for T {}
+
+/// [`EventsQuery`] struct represents a result of querying events from [`Scene`](crate::gamecore::scenes::Scene).
+///
+#[derive(Debug)]
+pub struct EventsQuery<'a, T: EventsTuple> {
+    /// Storage of resources.
+    ///
+    storage: &'a mut EventStorage,
 
     /// `PhantomData` for 'unused' generic parameter.
     ///
