@@ -6,6 +6,9 @@ use crate::gamecore::resources::{Resource, ResourceId};
 
 /// [`ResourceStorage`] struct provides API for a storage of [`Resource`]s.
 ///
+/// Conceptually, [`ResourcesStorage`] can be thought of as an `HashMap<ResourceId, R>`,
+/// where each separate `R` represents resource of one type.
+///
 #[derive(Debug, Default)]
 pub struct ResourceStorage {
     /// Map that stores resources.

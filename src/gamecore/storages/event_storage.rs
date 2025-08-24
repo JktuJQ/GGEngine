@@ -7,6 +7,9 @@ use std::any::Any;
 
 /// In `event_storage`, [`DynVec`] represents type-erased `Vec<T>`.
 ///
+/// This serves as an efficient replacement for `Vec<BoxedEvent>` in situations
+/// where multiple such vectors are used and each separate vector is homogenous in its component type.
+///
 #[derive(Debug)]
 struct DynVec {
     /// Type-erased vec.
@@ -22,7 +25,7 @@ impl DynVec {
         }
     }
 
-    /// Downcasts [`DynVec`] to vector.
+    /// Downcasts [`DynVec`] to `Vec<E>`.
     ///
     fn downcast<E: Event>(self) -> Result<Vec<E>, DynVec> {
         match self.vec.downcast::<Vec<E>>() {
@@ -43,6 +46,9 @@ impl DynVec {
 }
 
 /// [`EventStorage`] struct provides API for a storage of [`Event`]s.
+///
+/// Conceptually, [`EntityComponentStorage`] can be thought of as an `HashMap<EventId, Vec<E>>`,
+/// where each separate `Vec` contains events of one type.
 ///
 #[derive(Debug, Default)]
 pub struct EventStorage {

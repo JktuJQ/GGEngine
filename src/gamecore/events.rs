@@ -93,5 +93,5 @@ impl EventId {
     }
 }
 
-// submodules and public re-exports
-pub use super::storages::EventStorage;
+// public re-exports
+pub use crate::gamecore::{querying::EventQuery, storages::EventStorage};

@@ -99,5 +99,5 @@ impl ResourceId {
     }
 }
 
-// submodules and public re-exports
-pub use super::storages::ResourceStorage;
+// public re-exports
+pub use crate::gamecore::{querying::ResourceQuery, storages::ResourceStorage};

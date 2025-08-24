@@ -3,11 +3,13 @@
 //!
 
 // submodules and public re-exports
-pub mod querying;
-pub use querying::{ComponentGroup, ComponentsQuery, EventsQuery, ResourcesQuery};
-use querying::{ComponentGroupsTuple, EventsTuple, ResourcesTuple};
-
-use crate::gamecore::scenes::Scene;
+use crate::gamecore::{
+    querying::{
+        ComponentGroupsTuple, ComponentQuery, EventQuery, EventsTuple, ResourceQuery,
+        ResourcesTuple, SystemQuery,
+    },
+    scenes::Scene,
+};
 use std::{
     any::{Any, TypeId},
     error::Error,
@@ -15,30 +17,17 @@ use std::{
     marker::PhantomData,
 };
 
-/// [`SystemPreparationError`] enum lists all errors that could occur
-/// during preparation of the system function.
+/// [`QueryValidationError`] enum lists all errors that could occur
+/// during validation of query parameters of the system function.
 ///
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum SystemPreparationError {}
-impl fmt::Display for SystemPreparationError {
+pub enum QueryValidationError {}
+impl fmt::Display for QueryValidationError {
     fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unreachable!("`SystemPreparationError` enum has no variants.")
+        unreachable!("`QueryValidationError` enum has no variants")
     }
 }
-impl Error for SystemPreparationError {}
-/// [`PrepareSystemFn`] trait is implemented for functions that could be
-/// transformed into `ggengine` systems.
-///
-/// Functions that take high level abstractions that could be derived from the [`Scene`]
-/// are considered unprepared, because they parameters may be ill-formed and incoherent.
-/// Additional checks are needed to ensure correctness,
-/// and `PrepareSystemFn::prepare` function is specifically for that.
-///
-pub trait PrepareSystemFn {
-    /// Prepares system function, ensuring parameters correctness.
-    ///
-    fn prepare(self) -> Result<impl System, SystemPreparationError>;
-}
+impl Error for QueryValidationError {}
 
 /// [`SystemId`] id struct is needed to identify [`System`]s in [`SystemStorage`].
 ///
@@ -86,43 +75,11 @@ impl fmt::Debug for dyn System {
     }
 }
 
-pub struct RawSystemFn<F, S> {
-    state: S,
+pub struct RawSystemFn<State, F: FnMut(&mut State, &mut Scene) + 'static> {
+    state: State,
     f: F,
 }
-impl<F, S> RawSystemFn<F, S>
-where
-    F: for<'a> FnMut(&'a mut S, &'a mut Scene) + Any,
-{
-    pub fn with_state(state: S, f: F) -> Self {
-        Self { state, f }
-    }
-}
-impl<F, S> RawSystemFn<F, S>
-where
-    S: Default,
-
-    F: for<'a> FnMut(&'a mut S, &'a mut Scene) + Any,
-{
-    pub fn with_default_state(f: F) -> Self {
-        Self {
-            state: S::default(),
-            f,
-        }
-    }
-}
-impl<F, S> PrepareSystemFn for RawSystemFn<F, S>
-where
-    F: for<'a> FnMut(&'a mut S, &'a mut Scene) + Any,
-{
-    fn prepare(self) -> Result<impl System, SystemPreparationError> {
-        Ok(self)
-    }
-}
-impl<F, S> System for RawSystemFn<F, S>
-where
-    F: for<'a> FnMut(&'a mut S, &'a mut Scene) + Any,
-{
+impl<State, F: FnMut(&mut State, &mut Scene) + 'static> System for RawSystemFn<State, F> {
     fn id(&self) -> SystemId {
         SystemId(self.f.type_id())
     }
@@ -132,75 +89,46 @@ where
     }
 }
 
-pub struct SystemFn<F, S, C, R, E> {
-    state: S,
+pub struct SystemFn<
+    State,
+    ComponentParams: ComponentGroupsTuple,
+    ResourceParams: ResourcesTuple,
+    EventParams: EventsTuple,
+    F: FnMut(
+            &mut State,
+            ComponentQuery<ComponentParams>,
+            ResourceQuery<ResourceParams>,
+            EventQuery<EventParams>,
+        ) + 'static,
+> {
+    state: State,
     f: F,
 
-    _parameters: PhantomData<(C, R, E)>,
+    _params: PhantomData<(ComponentParams, ResourceParams, EventParams)>,
 }
-impl<F, S, C, R, E> SystemFn<F, S, C, R, E>
-where
-    C: ComponentGroupsTuple,
-    R: ResourcesTuple,
-    E: EventsTuple,
-
-    F: for<'a> FnMut(&'a mut S, ComponentsQuery<'a, C>, ResourcesQuery<'a, R>, EventsQuery<'a, E>)
-        + Any,
-{
-    pub fn with_state(state: S, f: F) -> Self {
-        Self {
-            state,
-            f,
-            _parameters: PhantomData,
-        }
-    }
-}
-impl<F, S, C, R, E> SystemFn<F, S, C, R, E>
-where
-    S: Default,
-    C: ComponentGroupsTuple,
-    R: ResourcesTuple,
-    E: EventsTuple,
-
-    F: for<'a> FnMut(&'a mut S, ComponentsQuery<'a, C>, ResourcesQuery<'a, R>, EventsQuery<'a, E>)
-        + Any,
-{
-    pub fn with_default_state(f: F) -> Self {
-        Self {
-            state: S::default(),
-            f,
-            _parameters: PhantomData,
-        }
-    }
-}
-
-impl<F, S, C, R, E> PrepareSystemFn for SystemFn<F, S, C, R, E>
-where
-    C: ComponentGroupsTuple,
-    R: ResourcesTuple,
-    E: EventsTuple,
-
-    F: for<'a> FnMut(&'a mut S, ComponentsQuery<'a, C>, ResourcesQuery<'a, R>, EventsQuery<'a, E>)
-        + Any,
-{
-    fn prepare(self) -> Result<impl System, SystemPreparationError> {
-        Ok(SystemFnWrapper(self))
-    }
-}
-
-struct SystemFnWrapper<F, S, C, R, E>(SystemFn<F, S, C, R, E>);
-impl<F, S, C, R, E> System for SystemFnWrapper<F, S, C, R, E>
-where
-    C: ComponentGroupsTuple,
-    R: ResourcesTuple,
-    E: EventsTuple,
-
-    F: for<'a> FnMut(&'a mut S, ComponentsQuery<'a, C>, ResourcesQuery<'a, R>, EventsQuery<'a, E>)
-        + Any,
+impl<
+        State,
+        ComponentParams: ComponentGroupsTuple,
+        ResourceParams: ResourcesTuple,
+        EventParams: EventsTuple,
+        F: FnMut(
+                &mut State,
+                ComponentQuery<ComponentParams>,
+                ResourceQuery<ResourceParams>,
+                EventQuery<EventParams>,
+            ) + 'static,
+    > System for SystemFn<State, ComponentParams, ResourceParams, EventParams, F>
 {
     fn id(&self) -> SystemId {
-        SystemId(self.0.f.type_id())
+        SystemId(self.f.type_id())
     }
 
-    fn run(&mut self, _: &mut Scene) {}
+    fn run(&mut self, scene: &mut Scene) {
+        (self.f)(
+            &mut self.state,
+            ComponentQuery::new_validated(&mut scene.component_storage),
+            ResourceQuery::new_validated(&mut scene.resource_storage),
+            EventQuery::new_validated(&mut scene.event_storage),
+        )
+    }
 }

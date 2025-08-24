@@ -118,7 +118,7 @@ impl fmt::Debug for dyn Component {
         write!(f, "{:?}", type_name::<Self>())
     }
 }
-/// [`ComponentId`] id struct is needed to identify [`Component`]s in [`EntityComponentStorage`].
+/// [`ComponentId`] id struct is needed to identify [`Component`]s in [`ComponentStorage`].
 ///
 /// # Usage
 /// Usage of this struct is fairly advanced.
@@ -235,7 +235,7 @@ impl ComponentId {
 /// 2. You can leverage provided implementation to construct your own:
 /// ```rust
 /// # use ggengine::gamecore::components::{Bundle, Component, ComponentId};
-/// # use ggengine::gamecore::storages::EntityComponentStorage;
+/// # use ggengine::gamecore::storages::ComponentStorage;
 /// # use ggengine::gamecore::entities::EntityId;
 /// # #[derive(Default)]
 /// # struct Player;
@@ -267,7 +267,7 @@ impl ComponentId {
 ///     fn add_to_entity(
 ///         self,
 ///         entity_id: EntityId,
-///         entity_component_storage: &mut EntityComponentStorage
+///         entity_component_storage: &mut ComponentStorage
 ///     ) {
 ///         (self.player, self.name, self.position)
 ///             .add_to_entity(entity_id, entity_component_storage)
@@ -285,7 +285,7 @@ impl ComponentId {
 /// 3. You can manually implement [`Bundle`] trait:
 /// ```rust
 /// # use ggengine::gamecore::components::{Bundle, Component, ComponentId};
-/// # use ggengine::gamecore::storages::EntityComponentStorage;
+/// # use ggengine::gamecore::storages::ComponentStorage;
 /// # use ggengine::gamecore::entities::EntityId;
 /// # use std::iter::once;
 /// struct PackedBundle<T> {
@@ -300,7 +300,7 @@ impl ComponentId {
 ///     fn add_to_entity(
 ///         self,
 ///         entity_id: EntityId,
-///         entity_component_storage: &mut EntityComponentStorage
+///         entity_component_storage: &mut ComponentStorage
 ///     ) {
 ///         let _ = entity_component_storage.insert_component(entity_id, self.inner_component);
 ///     }
@@ -323,14 +323,10 @@ pub trait Bundle {
     fn component_ids() -> impl Iterator<Item = ComponentId>;
 
     /// This method should add all of the components of a bundle to the entity.
-    /// Tha could be done by sequentially calling `EntityComponentStorage::insert_component` for each component in a bundle.
+    /// Tha could be done by sequentially calling `ComponentStorage::insert_component` for each component in a bundle.
     /// Since that requires statically knowing component types, this could only be done from this function.
     ///
-    fn add_to_entity(
-        self,
-        entity_id: EntityId,
-        entity_component_storage: &mut EntityComponentStorage,
-    );
+    fn add_to_entity(self, entity_id: EntityId, entity_component_storage: &mut ComponentStorage);
 }
 impl<T: Component> Bundle for T {
     const SIZE: usize = 1;
@@ -339,11 +335,7 @@ impl<T: Component> Bundle for T {
         once(ComponentId::of::<T>())
     }
 
-    fn add_to_entity(
-        self,
-        entity_id: EntityId,
-        entity_component_storage: &mut EntityComponentStorage,
-    ) {
+    fn add_to_entity(self, entity_id: EntityId, entity_component_storage: &mut ComponentStorage) {
         let _ = entity_component_storage.insert_component(entity_id, self);
     }
 }
@@ -364,7 +356,7 @@ macro_rules! impl_bundle {
             fn add_to_entity(
                 self,
                 _entity_id: EntityId,
-                _entity_component_storage: &mut EntityComponentStorage
+                _entity_component_storage: &mut ComponentStorage
             ) {
                 $(let _ = self.$index.add_to_entity(_entity_id, _entity_component_storage);)*
             }
@@ -379,5 +371,5 @@ seq!(SIZE in 0..=16 {
     )*
 });
 
-// submodules and public re-exports
-pub use super::storages::EntityComponentStorage;
+// public re-exports
+pub use crate::gamecore::{querying::ComponentQuery, storages::ComponentStorage};
