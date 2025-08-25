@@ -2,8 +2,36 @@
 //!
 
 use super::{NoOpHasherState, TypeIdMap};
-use crate::gamecore::systems::{System, SystemId};
+use crate::gamecore::{scenes::Scene, systems::{System, SystemId}};
+use std::fmt;
 
+/// [`StoredSystem`] struct wraps boxed system that takes `&mut Scene` and returns nothing.
+///
+/// Since storage could only operate with systems of one kind,
+/// arguments and return types of all systems need to be unifiable.
+/// `&mut Scene` as argument type and `()` as return type are the only options
+/// to which arguments and return type of any system could be unified.
+/// With that in mind, every stored system is just a `FnMut(&mut Scene)` object.
+///
+struct StoredSystem(Box<dyn FnMut(&mut Scene)>);
+impl StoredSystem {
+    /// Unifies any system to `FnMut(&mut Scene)` representation and wraps it in [`StoredSystem`].
+    ///
+    fn from_system<Args, F: System<Args>>(mut system: F) -> Self {
+        StoredSystem(Box::new(move |scene: &mut Scene| { let _ = system.run(scene); }))
+    }
+
+    /// Runs underlying unified system.
+    ///
+    fn run(&mut self, scene: &mut Scene) {
+        self.0.run(scene)
+    }
+}
+impl fmt::Debug for StoredSystem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Stored system")
+    }
+}
 /// [`SystemNode`] struct serves as the emulation of node in doubly linked list.
 ///
 #[derive(Debug)]
@@ -13,7 +41,7 @@ struct SystemNode {
     prev: usize,
     /// Boxed system.
     ///
-    system: Box<dyn System>,
+    system: StoredSystem,
     /// Index of next system.
     ///
     next: usize,
