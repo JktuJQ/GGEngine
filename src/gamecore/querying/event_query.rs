@@ -3,7 +3,7 @@
 
 use super::{QueryParameter, QueryParameterMarker, QueryParameterTuple};
 use crate::gamecore::events::{Event, EventStorage};
-use std::{error::Error, fmt, marker::PhantomData};
+use std::marker::PhantomData;
 
 /// [`EventMarker`] zero-sized type serves as a parameter marker
 /// for queries that operate on [`Event`]s.
@@ -25,18 +25,6 @@ impl<E: Event> QueryParameter<EventMarker> for &mut E {
 pub trait EventsTuple: QueryParameterTuple<EventMarker> {}
 impl<T: QueryParameterTuple<EventMarker>> EventsTuple for T {}
 
-/// [`EventQueryValidationError`] enum lists all errors that could occur
-/// during validation of [`EventQuery`] parameters.
-///
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum EventQueryValidationError {}
-impl fmt::Display for EventQueryValidationError {
-    fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unreachable!("`EventQueryValidationError` enum has no variants")
-    }
-}
-impl Error for EventQueryValidationError {}
-
 /// [`EventQuery`] struct represents a result of querying events from [`Scene`](crate::gamecore::scenes::Scene).
 ///
 #[derive(Debug)]
@@ -50,15 +38,7 @@ pub struct EventQuery<'a, EventParams: EventsTuple> {
     _params: PhantomData<EventParams>,
 }
 impl<'a, EventParams: EventsTuple> EventQuery<'a, EventParams> {
-    pub fn is_valid() -> Result<(), EventQueryValidationError> {
-        todo!("perform validation based on `EventParams`")
-    }
-
-    pub fn new(storage: &'a mut EventStorage) -> Result<Self, EventQueryValidationError> {
-        Self::is_valid()?;
-        Ok(Self::new_validated(storage))
-    }
-    pub fn new_validated(storage: &'a mut EventStorage) -> Self {
+    pub fn new(storage: &'a mut EventStorage) -> Self {
         Self {
             storage,
 

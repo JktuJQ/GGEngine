@@ -43,14 +43,7 @@ seq!(SIZE in 0..=16 {
 });
 
 // submodules and public re-exports
-mod component_query;
-pub use component_query::*;
-
-mod resource_query;
-pub use resource_query::*;
-
-mod event_query;
-pub use event_query::*;
-
-mod system_query;
-pub use system_query::*;
+pub(super) mod component_query;
+pub(super) mod event_query;
+pub(super) mod resource_query;
+pub(super) mod system_query;

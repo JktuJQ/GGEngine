@@ -371,5 +371,4 @@ seq!(SIZE in 0..=16 {
     )*
 });
 
-// public re-exports
-pub use crate::gamecore::{querying::ComponentQuery, storages::ComponentStorage};
+pub use crate::gamecore::{querying::component_query::*, storages::component_storage::*};

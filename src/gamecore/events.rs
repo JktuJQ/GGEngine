@@ -93,5 +93,4 @@ impl EventId {
     }
 }
 
-// public re-exports
-pub use crate::gamecore::{querying::EventQuery, storages::EventStorage};
+pub use crate::gamecore::{querying::event_query::*, storages::event_storage::*};

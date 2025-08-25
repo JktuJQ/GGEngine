@@ -3,11 +3,12 @@
 //!
 
 // submodules and public re-exports
+mod querying;
+mod storages;
+
 pub mod components;
 pub mod entities;
 pub mod events;
-pub mod querying;
 pub mod resources;
 pub mod scenes;
-pub mod storages;
 pub mod systems;

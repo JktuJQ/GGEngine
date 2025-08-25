@@ -99,5 +99,4 @@ impl ResourceId {
     }
 }
 
-// public re-exports
-pub use crate::gamecore::{querying::ResourceQuery, storages::ResourceStorage};
+pub use crate::gamecore::{querying::resource_query::*, storages::resource_storage::*};

@@ -2,7 +2,10 @@
 //! all game objects, components and systems that are bound to that [`Scene`].
 //!
 
-use crate::gamecore::storages::{ComponentStorage, EventStorage, ResourceStorage, SystemStorage};
+use crate::gamecore::{
+    components::ComponentStorage, events::EventStorage, resources::ResourceStorage,
+    systems::SystemStorage,
+};
 
 /// [`Scene`] struct composes all structs that implement ECS architecture.
 ///

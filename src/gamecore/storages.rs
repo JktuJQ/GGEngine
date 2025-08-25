@@ -61,14 +61,7 @@ type TypeIdSet<T> = HashSet<T, NoOpHasherState>;
 type TypeIdMap<K, V> = HashMap<K, V, NoOpHasherState>;
 
 // submodules and public re-exports
-mod component_storage;
-pub use component_storage::*;
-
-mod resource_storage;
-pub use resource_storage::*;
-
-mod event_storage;
-pub use event_storage::*;
-
-mod system_storage;
-pub use system_storage::*;
+pub(super) mod component_storage;
+pub(super) mod event_storage;
+pub(super) mod resource_storage;
+pub(super) mod system_storage;
