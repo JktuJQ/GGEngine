@@ -3,17 +3,24 @@
 //!
 
 // submodules and public re-exports
-use crate::gamecore::scenes::Scene;
+use crate::gamecore::{
+    querying::{
+        component_query::{ComponentGroupsTuple, ComponentQuery},
+        event_query::{EventQuery, EventsTuple},
+        resource_query::{ResourceQuery, ResourcesTuple},
+    },
+    scenes::Scene,
+};
 use std::any::{Any, TypeId};
 
-/// [`SystemId`] id struct is needed to identify [`System`]s in [`SystemStorage`].
+/// [`SystemId`] id struct is needed to identify [`System`]s in [`Systemconstructed_query`].
 ///
 /// # Usage
 /// Usage of this struct is fairly advanced.
 /// Most of the time you should use convenient statically typed API,
 /// which is provided by `ggengine`.
 ///
-/// Storages internally operate on ids, which allows them to provide more flexible interface.
+/// constructed_queries internally operate on ids, which allows them to provide more flexible interface.
 ///
 /// # Note
 /// This id struct is different from others such as
@@ -61,9 +68,9 @@ pub trait System<Args>: 'static {
     /// Currently in Rust one type could theoretically implement `Fn*` trait multiple times with different arguments.
     /// For that type, [`SystemId`] would be the same and it could lead to some unexpected behaviour.
     ///
-    /// For example, storing that type in [`SystemStorage`] as [`System`] with arguments `Args1`
+    /// For example, storing that type in [`Systemconstructed_query`] as [`System`] with arguments `Args1`
     /// and as [`System`] with arguments `Args2`
-    /// would make storage to view those systems as one, because [`SystemId`] of those are equal.
+    /// would make constructed_query to view those systems as one, because [`SystemId`] of those are equal.
     ///
     /// Fortunately, such type is quite rare and is currently possible only on `nightly` through manual implementation,
     /// so this issue should not be of any concern most of the time.
@@ -71,7 +78,9 @@ pub trait System<Args>: 'static {
     /// and provide different [`SystemId`]s
     /// (which could be achieved with proxying [`SystemId`] from dummy struct).
     ///
-    fn id(&self) -> SystemId;
+    fn id(&self) -> SystemId {
+        SystemId(self.type_id())
+    }
 
     /// Runs system function.
     ///
@@ -91,16 +100,177 @@ pub trait System<Args>: 'static {
 ///
 pub type BoxedSystem<Args, Output> = Box<dyn System<Args, Output = Output>>;
 
-impl<Output, F: FnMut(&mut Scene) -> Output + 'static> System<(&mut Scene,)> for F {
+impl<Output, F> System<(&mut Scene,)> for F
+where
+    F: FnMut(&mut Scene) -> Output + 'static,
+{
     type Output = Output;
 
-    fn id(&self) -> SystemId {
-        SystemId(self.type_id())
-    }
-    
     fn run(&mut self, scene: &mut Scene) -> Self::Output {
         self(scene)
     }
 }
+
+macro_rules! impl_system {
+    // base case that generates `impl` block
+    (
+        $scene:ident |
+        generics => $($generic:ident with $generic_bound:ident,)* |
+        arguments => $($query:ty,)* |
+        constructed_queries => $($constructed_query:expr,)* ;
+    ) => {
+        impl<$($generic,)* Output, F> System<($($query,)*)> for F
+        where
+            $($generic: $generic_bound,)*
+
+            F: FnMut($($query,)*) -> Output + 'static,
+        {
+            type Output = Output;
+
+            fn run(&mut self, $scene: &mut Scene) -> Self::Output {
+                self($($constructed_query,)*)
+            }
+        }
+    };
+
+    // cases
+    (
+        $scene:ident |
+        generics => $($generic:ident with $generic_bound:ident,)* |
+        arguments => $($query:ty,)* |
+        constructed_queries => $($constructed_query:expr,)* ;
+        components, $($parameter:ident,)*
+    ) => {
+        impl_system!(
+            $scene |
+            generics => $($generic with $generic_bound,)* ComponentParams with ComponentGroupsTuple, |
+            arguments => $($query,)* ComponentQuery<'_, ComponentParams>, |
+            constructed_queries => $($constructed_query,)* ComponentQuery::new(&mut $scene.component_storage), ;
+            $($parameter,)*
+        );
+    };
+    (
+        $scene:ident |
+        generics => $($generic:ident with $generic_bound:ident,)* |
+        arguments => $($query:ty,)* |
+        constructed_queries => $($constructed_query:expr,)* ;
+        resources, $($parameter:ident,)*
+    ) => {
+        impl_system!(
+            $scene |
+            generics => $($generic with $generic_bound,)* ResourceParams with ResourcesTuple, |
+            arguments => $($query,)* ResourceQuery<'_, ResourceParams>, |
+            constructed_queries => $($constructed_query,)* ResourceQuery::new(&mut $scene.resource_storage), ;
+            $($parameter,)*
+        );
+    };
+    (   $scene:ident |
+        generics => $($generic:ident with $generic_bound:ident,)* |
+        arguments => $($query:ty,)* |
+        constructed_queries => $($constructed_query:expr,)* ;
+        events, $($parameter:ident,)*
+    ) => {
+        impl_system!(
+            $scene |
+            generics => $($generic with $generic_bound,)* EventParams with EventsTuple, |
+            arguments => $($query,)* EventQuery<'_, EventParams>, |
+            constructed_queries => $($constructed_query,)* EventQuery::new(&mut $scene.event_storage), ;
+            $($parameter,)*
+        );
+    };
+    (
+        $scene:ident |
+        generics => $($generic:ident with $generic_bound:ident,)* |
+        arguments => $($query:ty,)* |
+        constructed_queries => $($constructed_query:expr,)* ;
+        systems, $($parameter:ident,)*
+    ) => {
+        impl_system!(
+            $scene |
+            generics => $($generic with $generic_bound,)* |
+            arguments => $($query,)* SystemQuery<'_>, |
+            constructed_queries => $($constructed_query,)* SystemQuery::new(&mut $scene.system_storage), ;
+            $($parameter,)*
+        );
+    };
+
+    (combination => ($($parameter:ident),*)) => {
+        impl_system!(_scene | generics => | arguments => | constructed_queries => ; $($parameter,)*);
+    };
+
+    // 68 combinations of parameters
+    (for all combinations) => {
+        impl_system!(combination => ());
+
+        impl_system!(combination => (components));
+        impl_system!(combination => (resources));
+        impl_system!(combination => (events));
+        impl_system!(combination => (systems));
+
+        impl_system!(combination => (components, resources));
+        impl_system!(combination => (resources, components));
+        impl_system!(combination => (components, events));
+        impl_system!(combination => (events, components));
+        impl_system!(combination => (components, systems));
+        impl_system!(combination => (systems, components));
+        impl_system!(combination => (resources, events));
+        impl_system!(combination => (events, resources));
+        impl_system!(combination => (resources, systems));
+        impl_system!(combination => (systems, resources));
+        impl_system!(combination => (events, systems));
+        impl_system!(combination => (systems, events));
+
+        impl_system!(combination => (components, resources, events));
+        impl_system!(combination => (components, events, resources));
+        impl_system!(combination => (resources, components, events));
+        impl_system!(combination => (resources, events, components));
+        impl_system!(combination => (events, components, resources));
+        impl_system!(combination => (events, resources, components));
+        impl_system!(combination => (components, resources, systems));
+        impl_system!(combination => (components, systems, resources));
+        impl_system!(combination => (resources, components, systems));
+        impl_system!(combination => (resources, systems, components));
+        impl_system!(combination => (systems, components, resources));
+        impl_system!(combination => (systems, resources, components));
+        impl_system!(combination => (components, events, systems));
+        impl_system!(combination => (components, systems, events));
+        impl_system!(combination => (events, components, systems));
+        impl_system!(combination => (events, systems, components));
+        impl_system!(combination => (systems, components, events));
+        impl_system!(combination => (systems, events, components));
+        impl_system!(combination => (resources, events, systems));
+        impl_system!(combination => (resources, systems, events));
+        impl_system!(combination => (events, resources, systems));
+        impl_system!(combination => (events, systems, resources));
+        impl_system!(combination => (systems, resources, events));
+        impl_system!(combination => (systems, events, resources));
+
+        impl_system!(combination => (components, resources, events, systems));
+        impl_system!(combination => (components, resources, systems, events));
+        impl_system!(combination => (components, events, resources, systems));
+        impl_system!(combination => (components, events, systems, resources));
+        impl_system!(combination => (components, systems, resources, events));
+        impl_system!(combination => (components, systems, events, resources));
+        impl_system!(combination => (resources, components, events, systems));
+        impl_system!(combination => (resources, components, systems, events));
+        impl_system!(combination => (resources, events, components, systems));
+        impl_system!(combination => (resources, events, systems, components));
+        impl_system!(combination => (resources, systems, components, events));
+        impl_system!(combination => (resources, systems, events, components));
+        impl_system!(combination => (events, components, resources, systems));
+        impl_system!(combination => (events, components, systems, resources));
+        impl_system!(combination => (events, resources, components, systems));
+        impl_system!(combination => (events, resources, systems, components));
+        impl_system!(combination => (events, systems, components, resources));
+        impl_system!(combination => (events, systems, resources, components));
+        impl_system!(combination => (systems, components, resources, events));
+        impl_system!(combination => (systems, components, events, resources));
+        impl_system!(combination => (systems, resources, components, events));
+        impl_system!(combination => (systems, resources, events, components));
+        impl_system!(combination => (systems, events, components, resources));
+        impl_system!(combination => (systems, events, resources, components));
+    };
+}
+impl_system!(for all combinations);
 
 pub use crate::gamecore::{querying::system_query::*, storages::system_storage::*};
