@@ -137,19 +137,31 @@ impl ComponentId {
     }
 }
 
-/// [`Bundle`] trait defines a static set of [`Component`]s.
+/// [`ComponentSet`] trait defines a static set of [`Component`]s.
 ///
 /// In ECS, components define objects and systems operate on combinations of components.
-/// [`Bundle`] trait provides a way to create a set of [`Component`]s that are coupled
+/// [`ComponentSet`] trait provides a way to create a set of [`Component`]s that are coupled
 /// by some logic, and it just makes sense to use those together.
 ///
-/// # Examples
-/// Every [`Component`] is a [`Bundle`], because component is basically a set (bundle) of one component.
-/// Additionally, tuples of bundles are also [`Bundle`]
-/// (with up to 16 items, but can be nested indefinetely; if you need more, consider implementing your own [`Bundle`]).
-/// This allows you to combine the necessary components into a [`Bundle`].
+/// Although absence of repeating elements is not enforced for the set, it it still expected from it.
+/// If there is repeating component in the set, only one of those will be added to the storage,
+/// which could lead to unexpected behaviour.
 ///
-/// For example defining a `PlayerBundle` containing components that describe the player
+/// Due to that, you should not use [`ComponentSet`]s as units of behaviour -
+/// adding two sets to the entity and then removing one of them does not necessarily mean
+/// that the other is still present if those two intersect.
+/// For that reason, there is intentionally no way to check whether the set is present at entity
+/// or to query based on set components.
+/// That said, you should only use [`ComponentSet`]s as a convenient way to add/remove multiple components
+/// at once, not thinking about sets as abstraction.
+///
+/// # Examples
+/// Every [`Component`] is a [`ComponentSet`], because component is basically a set of one component.
+/// Additionally, tuples of sets are also [`ComponentSet`]
+/// (with up to 16 items, but can be nested indefinetely; if you need more, consider implementing your own [`ComponentSet`]).
+/// This allows you to combine the necessary components into a [`ComponentSet`].
+///
+/// For example defining a `PlayerComponentSet` containing components that describe the player
 /// can be written as follows:
 /// ```rust
 /// # use ggengine::gamecore::components::Component;
@@ -168,10 +180,10 @@ impl ComponentId {
 /// }
 /// impl Component for Position {}
 ///
-/// type PlayerBundle = (Player, Name, Position);
+/// type PlayerComponentSet = (Player, Name, Position);
 /// ```
 ///
-/// You might want to customize initialization of your [`Bundle`].
+/// You might want to customize initialization of your [`ComponentSet`].
 /// You can, of course, use `Default::default()`:
 /// ```rust
 /// # use ggengine::gamecore::components::Component;
@@ -190,9 +202,9 @@ impl ComponentId {
 /// # }
 /// # impl Component for Position {}
 /// #
-/// type PlayerBundle = (Player, Name, Position);
+/// type PlayerComponentSet = (Player, Name, Position);
 ///
-/// let player: PlayerBundle = Default::default();
+/// let player: PlayerComponentSet = Default::default();
 /// ```
 /// However, tuples do not support the struct update syntax
 /// and for complex cases, their initialization is inconvenient.
@@ -216,26 +228,25 @@ impl ComponentId {
 /// # }
 /// # impl Component for Position {}
 /// #
-/// type PlayerBundle = (Player, Name, Position);
+/// type PlayerComponentSet = (Player, Name, Position);
 ///
 /// trait WithName {
 ///     fn with_name(name: &'static str) -> Self;
 /// }
-/// impl WithName for PlayerBundle {
-///     fn with_name(name: &'static str) -> PlayerBundle {
-///         let mut result: PlayerBundle = PlayerBundle::default();
+/// impl WithName for PlayerComponentSet {
+///     fn with_name(name: &'static str) -> PlayerComponentSet {
+///         let mut result: PlayerComponentSet = PlayerComponentSet::default();
 ///         result.1 = Name(name);
 ///         result
 ///     }
 /// }
 ///
-/// let player: PlayerBundle = PlayerBundle::with_name("Player");
+/// let player: PlayerComponentSet = PlayerComponentSet::with_name("Player");
 /// ```
 ///
 /// 2. You can leverage provided implementation to construct your own:
 /// ```rust
-/// # use ggengine::gamecore::components::{Bundle, Component, ComponentId};
-/// # use ggengine::gamecore::storages::ComponentStorage;
+/// # use ggengine::gamecore::components::{ComponentSet, Component, ComponentId, ComponentStorage};
 /// # use ggengine::gamecore::entities::EntityId;
 /// # #[derive(Default)]
 /// # struct Player;
@@ -253,28 +264,23 @@ impl ComponentId {
 /// # impl Component for Position {}
 /// #
 /// #[derive(Default)]
-/// struct PlayerBundle {
+/// struct PlayerComponentSet {
 ///     player: Player,
 ///     name: Name,
 ///     position: Position,
 /// }
-/// impl Bundle for PlayerBundle {
+/// impl ComponentSet for PlayerComponentSet {
 ///     const SIZE: usize = 3;
 ///
 ///     fn component_ids() -> impl Iterator<Item = ComponentId> {
 ///         <(Player, Name, Position)>::component_ids()
 ///     }
-///     fn add_to_entity(
-///         self,
-///         entity_id: EntityId,
-///         entity_component_storage: &mut ComponentStorage
-///     ) {
-///         (self.player, self.name, self.position)
-///             .add_to_entity(entity_id, entity_component_storage)
+///     fn insert_set(self, entity_id: EntityId, storage: &mut ComponentStorage) {
+///         (self.player, self.name, self.position).insert_set(entity_id, storage)
 ///     }
 /// }
 ///
-/// let player: PlayerBundle = PlayerBundle {
+/// let player: PlayerComponentSet = PlayerComponentSet {
 ///     name: Name("Player"),
 ///     ..Default::default()
 /// };
@@ -282,27 +288,22 @@ impl ComponentId {
 /// That approach allows to free yourself from all restrictions,
 /// and just 'pack a bundle' at the very end.
 ///
-/// 3. You can manually implement [`Bundle`] trait:
+/// 3. You can manually implement [`ComponentSet`] trait:
 /// ```rust
-/// # use ggengine::gamecore::components::{Bundle, Component, ComponentId};
-/// # use ggengine::gamecore::storages::ComponentStorage;
+/// # use ggengine::gamecore::components::{ComponentSet, Component, ComponentId, ComponentStorage};
 /// # use ggengine::gamecore::entities::EntityId;
 /// # use std::iter::once;
-/// struct PackedBundle<T> {
+/// struct PackedComponentSet<T> {
 ///     inner_component: T
 /// }
-/// impl<T: Component> Bundle for PackedBundle<T> {
+/// impl<T: Component> ComponentSet for PackedComponentSet<T> {
 ///     const SIZE: usize = 1;
 ///
 ///     fn component_ids() -> impl Iterator<Item = ComponentId> {
 ///         once(ComponentId::of::<T>())
 ///     }
-///     fn add_to_entity(
-///         self,
-///         entity_id: EntityId,
-///         entity_component_storage: &mut ComponentStorage
-///     ) {
-///         let _ = entity_component_storage.insert_component(entity_id, self.inner_component);
+///     fn insert_set(self, entity_id: EntityId, storage: &mut ComponentStorage) {
+///         let _ = storage.insert_component(entity_id, self.inner_component);
 ///     }
 /// }
 /// ```
@@ -311,41 +312,46 @@ impl ComponentId {
 /// and susceptible to errors (fairly easy to mistype).
 /// With that in mind, you should use implementation for tuples.
 ///
-pub trait Bundle {
-    /// Size of the [`Bundle`].
+pub trait ComponentSet {
+    /// Size of the [`ComponentSet`].
     ///
     const SIZE: usize;
 
-    /// Returns ids of all components that are in the bundle.
+    /// Returns ids of all components that are in the set.
     ///
-    /// This function should return iterator with length of `<self as Bundle>::SIZE`.
+    /// This function should return iterator with length of `ComponentSet::SIZE`.
+    /// When `const_generics` will land,
+    /// this function should return `[ComponentId; Self::Size]` to prevent buggy implementations.
     ///
     fn component_ids() -> impl Iterator<Item = ComponentId>;
 
-    /// This method should add all of the components of a bundle to the entity.
-    /// Tha could be done by sequentially calling `ComponentStorage::insert_component` for each component in a bundle.
+    /// This method should insert all of the components of a set to the entity.
+    /// That could be done by sequentially calling `ComponentStorage::insert_component` for each component in a set.
     /// Since that requires statically knowing component types, this could only be done from this function.
     ///
-    fn add_to_entity(self, entity_id: EntityId, entity_component_storage: &mut ComponentStorage);
+    /// Normally this function would not be called directly,
+    /// instead `ComponentStorage::insert_components` would be used.
+    ///
+    fn insert_set(self, entity_id: EntityId, component_storage: &mut ComponentStorage);
 }
-impl<T: Component> Bundle for T {
+impl<C: Component> ComponentSet for C {
     const SIZE: usize = 1;
 
     fn component_ids() -> impl Iterator<Item = ComponentId> {
-        once(ComponentId::of::<T>())
+        once(ComponentId::of::<C>())
     }
 
-    fn add_to_entity(self, entity_id: EntityId, entity_component_storage: &mut ComponentStorage) {
-        let _ = entity_component_storage.insert_component(entity_id, self);
+    fn insert_set(self, entity_id: EntityId, storage: &mut ComponentStorage) {
+        let _ = storage.insert_component(entity_id, self);
     }
 }
-/// [`impl_bundle`] macro implements [`Bundle`] trait for tuples.
+/// [`impl_component_set`] macro implements [`ComponentSet`] trait for tuples.
 ///
-macro_rules! impl_bundle {
+macro_rules! impl_component_set {
     ($(($t:ident, $index:tt)),* $(,)?) => {
-        impl<$($t,)*> Bundle for ($($t,)*)
+        impl<$($t,)*> ComponentSet for ($($t,)*)
         where
-            $($t: Bundle,)*
+            $($t: ComponentSet,)*
         {
             const SIZE: usize = $($t::SIZE + )* 0;
 
@@ -353,12 +359,8 @@ macro_rules! impl_bundle {
                 empty()$(.chain($t::component_ids()))*
             }
 
-            fn add_to_entity(
-                self,
-                _entity_id: EntityId,
-                _entity_component_storage: &mut ComponentStorage
-            ) {
-                $(let _ = self.$index.add_to_entity(_entity_id, _entity_component_storage);)*
+            fn insert_set(self, _entity_id: EntityId, _storage: &mut ComponentStorage) {
+                $(let _ = self.$index.insert_set(_entity_id, _storage);)*
             }
         }
     };
@@ -366,7 +368,7 @@ macro_rules! impl_bundle {
 seq!(SIZE in 0..=16 {
     #(
         seq!(N in 0..SIZE {
-            impl_bundle!(#((C~N, N),)*);
+            impl_component_set!(#((C~N, N),)*);
         });
     )*
 });

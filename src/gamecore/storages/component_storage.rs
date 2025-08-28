@@ -3,7 +3,7 @@
 
 use super::{NoOpHasherState, TypeIdMap, TypeIdSet};
 use crate::gamecore::{
-    components::{Bundle, Component, ComponentId},
+    components::{Component, ComponentId, ComponentSet},
     entities::{EntityId, EntityMut, EntityRef},
 };
 use std::{any::Any, array::from_fn};
@@ -94,6 +94,7 @@ pub struct ComponentStorage {
     /// Maximal index that is vacant for entity insertion.
     ///
     max_vacant_index: usize,
+
     /// Set of removed entities.
     ///
     removed_entities: TypeIdSet<EntityId>,
@@ -112,7 +113,7 @@ impl ComponentStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ComponentStorage;
+    /// # use ggengine::gamecore::components::ComponentStorage;
     /// let storage: ComponentStorage = ComponentStorage::new();
     /// ```
     ///
@@ -162,8 +163,7 @@ impl ComponentStorage {
     ///
     /// # Examples
     /// ```rust
-    /// # use ggengine::gamecore::storages::ComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, ComponentStorage};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
@@ -176,9 +176,9 @@ impl ComponentStorage {
     /// let player: EntityId = storage.insert_entity((Player, Health(10))).id();
     /// ```
     ///
-    pub fn insert_entity<B: Bundle>(&mut self, components: B) -> EntityMut {
+    pub fn insert_entity<CS: ComponentSet>(&mut self, components: CS) -> EntityMut {
         let entity_id = self.obtain_entity_ids::<1>()[0];
-        components.add_to_entity(entity_id, self);
+        components.insert_set(entity_id, self);
         EntityMut::new(entity_id, self)
     }
     /// Inserts multiple entities with components into [`ComponentStorage`]
@@ -191,8 +191,7 @@ impl ComponentStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, ComponentStorage};
     /// # use ggengine::gamecore::entities::EntityRef;
     /// struct NPC;
     /// impl Component for NPC {}
@@ -212,14 +211,14 @@ impl ComponentStorage {
     /// ]);
     /// ```
     ///
-    pub fn insert_many_entities<B: Bundle, const N: usize>(
+    pub fn insert_many_entities<CS: ComponentSet, const N: usize>(
         &mut self,
-        many_components: [B; N],
+        many_components: [CS; N],
     ) -> [EntityRef; N] {
         let ids = self.obtain_entity_ids::<N>();
         for (entity_id, components) in ids.into_iter().rev().zip(many_components.into_iter().rev())
         {
-            components.add_to_entity(entity_id, self);
+            components.insert_set(entity_id, self);
         }
         ids.map(|entity_id| EntityRef::new(entity_id, self))
     }
@@ -228,8 +227,7 @@ impl ComponentStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, ComponentStorage};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
@@ -257,8 +255,7 @@ impl ComponentStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, ComponentStorage};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
@@ -294,7 +291,7 @@ impl ComponentStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ComponentStorage;
+    /// # use ggengine::gamecore::components::ComponentStorage;
     /// # use ggengine::gamecore::entities::{EntityId, EntityRef};
     /// let mut storage: ComponentStorage = ComponentStorage::new();
     ///
@@ -313,7 +310,7 @@ impl ComponentStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ComponentStorage;
+    /// # use ggengine::gamecore::components::ComponentStorage;
     /// # use ggengine::gamecore::entities::{EntityId, EntityMut};
     /// let mut storage: ComponentStorage = ComponentStorage::new();
     ///
@@ -334,7 +331,7 @@ impl ComponentStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ComponentStorage;
+    /// # use ggengine::gamecore::components::ComponentStorage;
     /// # use ggengine::gamecore::entities::EntityId;
     /// let mut storage: ComponentStorage = ComponentStorage::new();
     ///
@@ -361,8 +358,7 @@ impl ComponentStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, ComponentStorage};
     /// # use ggengine::gamecore::entities::{EntityId, EntityRef};
     /// struct NPC;
     /// impl Component for NPC {}
@@ -393,8 +389,7 @@ impl ComponentStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, ComponentStorage};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
@@ -431,8 +426,7 @@ impl ComponentStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, ComponentStorage};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
@@ -449,19 +443,22 @@ impl ComponentStorage {
     /// );
     /// ```
     ///
-    pub fn insert_many_components<B: Bundle>(&mut self, entity_id: EntityId, components: B) {
+    pub fn insert_many_components<CS: ComponentSet>(
+        &mut self,
+        entity_id: EntityId,
+        components: CS,
+    ) {
         if !self.contains_entity(entity_id) {
             return;
         }
-        components.add_to_entity(entity_id, self)
+        components.insert_set(entity_id, self)
     }
 
     /// Removes component from an entity and returns the old value if present.
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, ComponentStorage};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
@@ -489,8 +486,7 @@ impl ComponentStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, ComponentStorage};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
@@ -513,7 +509,7 @@ impl ComponentStorage {
     /// assert!(!storage.contains_component::<Health>(player));
     /// ```
     ///
-    pub fn remove_many_components<B: Bundle>(&mut self, entity_id: EntityId) {
+    pub fn remove_many_components<B: ComponentSet>(&mut self, entity_id: EntityId) {
         if !self.contains_entity(entity_id) {
             return;
         }
@@ -545,8 +541,7 @@ impl ComponentStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, ComponentStorage};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
@@ -577,8 +572,7 @@ impl ComponentStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, ComponentStorage};
     /// # use ggengine::gamecore::entities::EntityId;
     /// struct Player;
     /// impl Component for Player {}
@@ -613,8 +607,7 @@ impl ComponentStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, ComponentStorage};
     /// # use ggengine::gamecore::entities::EntityRef;
     /// #[derive(Debug, PartialEq)]
     /// struct NPC;
@@ -654,8 +647,7 @@ impl ComponentStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, ComponentStorage};
     /// # use ggengine::gamecore::entities::EntityRef;
     /// #[derive(Debug, PartialEq)]
     /// struct NPC;
@@ -699,8 +691,7 @@ impl ComponentStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ComponentStorage;
-    /// # use ggengine::gamecore::components::Component;
+    /// # use ggengine::gamecore::components::{Component, ComponentStorage};
     /// # use ggengine::gamecore::entities::EntityRef;
     /// #[derive(Debug, PartialEq)]
     /// struct NPC;

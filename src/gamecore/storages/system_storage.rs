@@ -2,7 +2,10 @@
 //!
 
 use super::{NoOpHasherState, TypeIdMap};
-use crate::gamecore::{scenes::Scene, systems::{System, SystemId}};
+use crate::gamecore::{
+    scenes::Scene,
+    systems::{System, SystemId},
+};
 use std::fmt;
 
 /// [`StoredSystem`] struct wraps boxed system that takes `&mut Scene` and returns nothing.
@@ -18,7 +21,9 @@ impl StoredSystem {
     /// Unifies any system to `FnMut(&mut Scene)` representation and wraps it in [`StoredSystem`].
     ///
     fn from_system<Args, F: System<Args>>(mut system: F) -> Self {
-        StoredSystem(Box::new(move |scene: &mut Scene| { let _ = system.run(scene); }))
+        StoredSystem(Box::new(move |scene: &mut Scene| {
+            let _ = system.run(scene);
+        }))
     }
 
     /// Runs underlying unified system.
@@ -72,7 +77,7 @@ impl SystemStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::SystemStorage;
+    /// # use ggengine::gamecore::systems::SystemStorage;
     /// let storage: SystemStorage = SystemStorage::new();
     /// ```
     ///

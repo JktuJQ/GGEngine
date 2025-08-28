@@ -63,7 +63,7 @@ impl EventStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::EventStorage;
+    /// # use ggengine::gamecore::events::EventStorage;
     /// let storage: EventStorage = EventStorage::new();
     /// ```
     ///
@@ -88,8 +88,7 @@ impl EventStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::EventStorage;
-    /// # use ggengine::gamecore::events::Event;
+    /// # use ggengine::gamecore::events::{Event, EventStorage};
     /// // Mock `EntityId`.
     /// struct EntityId(u64);
     ///
@@ -101,17 +100,17 @@ impl EventStorage {
     ///
     /// let mut storage: EventStorage = EventStorage::new();
     ///
-    /// storage.insert(InflictedDamage {
+    /// storage.insert_event(InflictedDamage {
     ///     damage: 10,
     ///     target: EntityId(0)
     /// });
-    /// storage.insert(InflictedDamage {
+    /// storage.insert_event(InflictedDamage {
     ///     damage: 15,
     ///     target: EntityId(1)
     /// });
     /// ```
     ///
-    pub fn insert<E: Event>(&mut self, event: E) {
+    pub fn insert_event<E: Event>(&mut self, event: E) {
         self.events
             .entry(EventId::of::<E>())
             .or_insert(DynVec::new::<E>())
@@ -130,8 +129,7 @@ impl EventStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::EventStorage;
-    /// # use ggengine::gamecore::events::Event;
+    /// # use ggengine::gamecore::events::{Event, EventStorage};
     /// // Mock `EntityId`.
     /// #[derive(Copy, Clone, Debug, PartialEq)]
     /// struct EntityId(u64);
@@ -153,14 +151,17 @@ impl EventStorage {
     ///     damage: 15,
     ///     target: EntityId(1)
     /// };
-    /// storage.insert(damage1);
-    /// storage.insert(damage2);
+    /// storage.insert_event(damage1);
+    /// storage.insert_event(damage2);
     ///
-    /// assert_eq!(storage.remove::<InflictedDamage>().expect("`InflictedDamage` was inserted"), vec![damage1, damage2]);
-    /// assert!(storage.remove::<InflictedDamage>().is_none());
+    /// assert_eq!(
+    ///     storage.remove_event::<InflictedDamage>().expect("`InflictedDamage` was inserted"),
+    ///     vec![damage1, damage2]
+    /// );
+    /// assert!(storage.remove_event::<InflictedDamage>().is_none());
     /// ```
     ///
-    pub fn remove<E: Event>(&mut self) -> Option<Vec<E>> {
+    pub fn remove_event<E: Event>(&mut self) -> Option<Vec<E>> {
         self.events.remove(&EventId::of::<E>()).and_then(|events| {
             let vec = events.downcast::<E>().expect("`DynVec` is of correct type");
             if vec.is_empty() {
@@ -177,8 +178,7 @@ impl EventStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::EventStorage;
-    /// # use ggengine::gamecore::events::Event;
+    /// # use ggengine::gamecore::events::{Event, EventStorage};
     /// // Mock `EntityId`.
     /// struct EntityId(u64);
     ///
@@ -190,17 +190,17 @@ impl EventStorage {
     ///
     /// let mut storage: EventStorage = EventStorage::new();
     ///
-    /// storage.insert(InflictedDamage {
+    /// storage.insert_event(InflictedDamage {
     ///     damage: 10,
     ///     target: EntityId(0)
     /// });
     ///
-    /// assert!(storage.contains::<InflictedDamage>());
-    /// storage.remove::<InflictedDamage>();
-    /// assert!(!storage.contains::<InflictedDamage>());
+    /// assert!(storage.contains_event::<InflictedDamage>());
+    /// storage.remove_event::<InflictedDamage>();
+    /// assert!(!storage.contains_event::<InflictedDamage>());
     /// ```
     ///
-    pub fn contains<E: Event>(&self) -> bool {
+    pub fn contains_event<E: Event>(&self) -> bool {
         self.events.contains_key(&EventId::of::<E>())
             && !self
                 .events
@@ -221,8 +221,7 @@ impl EventStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::EventStorage;
-    /// # use ggengine::gamecore::events::Event;
+    /// # use ggengine::gamecore::events::{Event, EventStorage};
     /// // Mock `EntityId`.
     /// #[derive(Copy, Clone, Debug, PartialEq)]
     /// struct EntityId(u64);
@@ -244,10 +243,13 @@ impl EventStorage {
     ///     damage: 15,
     ///     target: EntityId(1)
     /// };
-    /// storage.insert(damage1);
-    /// storage.insert(damage2);
+    /// storage.insert_event(damage1);
+    /// storage.insert_event(damage2);
     ///
-    /// assert_eq!(storage.events::<InflictedDamage>().expect("`InflictedDamage` was inserted"), &vec![damage1, damage2]);
+    /// assert_eq!(
+    ///     storage.events::<InflictedDamage>().expect("`InflictedDamage` was inserted"),
+    ///     &vec![damage1, damage2]
+    /// );
     /// ```
     ///
     pub fn events<E: Event>(&self) -> Option<&Vec<E>> {
@@ -267,8 +269,7 @@ impl EventStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::EventStorage;
-    /// # use ggengine::gamecore::events::Event;
+    /// # use ggengine::gamecore::events::{Event, EventStorage};
     /// // Mock `EntityId`.
     /// #[derive(Copy, Clone, Debug, PartialEq)]
     /// struct EntityId(u64);
@@ -290,14 +291,17 @@ impl EventStorage {
     ///     damage: 15,
     ///     target: EntityId(1)
     /// };
-    /// storage.insert(damage1);
-    /// storage.insert(damage2);
+    /// storage.insert_event(damage1);
+    /// storage.insert_event(damage2);
     ///
     /// let events = storage.events_mut::<InflictedDamage>().expect("`InflictedDamage` was inserted");
     /// events[0].damage *= 2;
     ///
     /// damage1.damage *= 2;
-    /// assert_eq!(storage.events::<InflictedDamage>().expect("`InflictedDamage` was inserted"), &vec![damage1, damage2]);
+    /// assert_eq!(
+    ///     storage.events::<InflictedDamage>().expect("`InflictedDamage` was inserted"),
+    ///     &vec![damage1, damage2]
+    /// );
     /// ```
     ///
     pub fn events_mut<E: Event>(&mut self) -> Option<&mut Vec<E>> {

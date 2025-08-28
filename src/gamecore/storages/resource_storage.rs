@@ -22,7 +22,7 @@ impl ResourceStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ResourceStorage;
+    /// # use ggengine::gamecore::resources::ResourceStorage;
     /// let storage: ResourceStorage = ResourceStorage::new();
     /// ```
     ///
@@ -48,17 +48,16 @@ impl ResourceStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ResourceStorage;
-    /// # use ggengine::gamecore::resources::Resource;
+    /// # use ggengine::gamecore::resources::{Resource, ResourceStorage};
     /// struct Score(u32);
     /// impl Resource for Score {}
     ///
     /// let mut storage: ResourceStorage = ResourceStorage::new();
     ///
-    /// storage.insert(Score(0));
+    /// storage.insert_resource(Score(0));
     /// ```
     ///
-    pub fn insert<R: Resource>(&mut self, resource: R) -> Option<R> {
+    pub fn insert_resource<R: Resource>(&mut self, resource: R) -> Option<R> {
         self.resources
             .insert(ResourceId::of::<R>(), Box::new(resource))
             .map(|boxed| {
@@ -73,18 +72,17 @@ impl ResourceStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ResourceStorage;
-    /// # use ggengine::gamecore::resources::Resource;
+    /// # use ggengine::gamecore::resources::{Resource, ResourceStorage};
     /// struct Score(u32);
     /// impl Resource for Score {}
     ///
     /// let mut storage: ResourceStorage = ResourceStorage::new();
     ///
-    /// storage.insert(Score(0));
-    /// assert_eq!(storage.remove::<Score>().expect("`Score` was inserted").0, 0);
+    /// storage.insert_resource(Score(0));
+    /// assert_eq!(storage.remove_resource::<Score>().expect("`Score` was inserted").0, 0);
     /// ```
     ///
-    pub fn remove<R: Resource>(&mut self) -> Option<R> {
+    pub fn remove_resource<R: Resource>(&mut self) -> Option<R> {
         self.resources.remove(&ResourceId::of::<R>()).map(|boxed| {
             *(boxed
                 .downcast::<R>()
@@ -96,22 +94,21 @@ impl ResourceStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ResourceStorage;
-    /// # use ggengine::gamecore::resources::{Resource, ResourceId};
+    /// # use ggengine::gamecore::resources::{Resource, ResourceStorage};
     /// struct Score(u32);
     /// impl Resource for Score {}
     ///
     /// let mut storage: ResourceStorage = ResourceStorage::new();
-    /// assert!(!storage.contains::<Score>());
+    /// assert!(!storage.contains_resource::<Score>());
     ///
-    /// storage.insert(Score(0));
-    /// assert!(storage.contains::<Score>());
+    /// storage.insert_resource(Score(0));
+    /// assert!(storage.contains_resource::<Score>());
     ///
-    /// let _ = storage.remove::<Score>();
-    /// assert!(!storage.contains::<Score>());
+    /// let _ = storage.remove_resource::<Score>();
+    /// assert!(!storage.contains_resource::<Score>());
     /// ```
     ///
-    pub fn contains<R: Resource>(&mut self) -> bool {
+    pub fn contains_resource<R: Resource>(&mut self) -> bool {
         self.resources.contains_key(&ResourceId::of::<R>())
     }
 
@@ -119,15 +116,14 @@ impl ResourceStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ResourceStorage;
-    /// # use ggengine::gamecore::resources::{Resource, ResourceId};
+    /// # use ggengine::gamecore::resources::{Resource, ResourceStorage};
     /// struct Score(u32);
     /// impl Resource for Score {}
     ///
     /// let mut storage: ResourceStorage = ResourceStorage::new();
     /// assert!(storage.resource::<Score>().is_none());
     ///
-    /// storage.insert(Score(0));
+    /// storage.insert_resource(Score(0));
     /// assert_eq!(storage.resource::<Score>().expect("`Score` was inserted").0, 0);
     /// ```
     ///
@@ -142,15 +138,14 @@ impl ResourceStorage {
     ///
     /// # Example
     /// ```rust
-    /// # use ggengine::gamecore::storages::ResourceStorage;
-    /// # use ggengine::gamecore::resources::{Resource, ResourceId};
+    /// # use ggengine::gamecore::resources::{Resource, ResourceStorage};
     /// struct Score(u32);
     /// impl Resource for Score {}
     ///
     /// let mut storage: ResourceStorage = ResourceStorage::new();
     /// assert!(storage.resource_mut::<Score>().is_none());
     ///
-    /// storage.insert(Score(0));
+    /// storage.insert_resource(Score(0));
     /// let score = storage.resource_mut::<Score>().expect("`Score` was isnerted");
     /// score.0 = 15;
     /// assert_eq!(storage.resource::<Score>().expect("`Score` was inserted").0, 15);
