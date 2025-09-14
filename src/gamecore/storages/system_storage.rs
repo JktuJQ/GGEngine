@@ -2,41 +2,35 @@
 //!
 
 use super::{NoOpHasherState, TypeIdMap};
-use crate::gamecore::{
-    scenes::Scene,
-    systems::{System, SystemId},
-};
-use std::fmt;
+use crate::gamecore::systems::{DecomposedSystem, System, SystemId};
 
-/// [`StoredSystem`] struct wraps boxed system that takes `&mut Scene` and returns nothing.
+/// [`SystemPosition`] enum lists possible positions
+/// in which new system could be inserted into [`SystemStorage`].
 ///
-/// Since storage could only operate with systems of one kind,
-/// arguments and return types of all systems need to be unifiable.
-/// `&mut Scene` as argument type and `()` as return type are the only options
-/// to which arguments and return type of any system could be unified.
-/// With that in mind, every stored system is just a `FnMut(&mut Scene)` object.
+/// Docs on [`SystemPosition`] variants describe specifics of each position.
 ///
-struct StoredSystem(Box<dyn FnMut(&mut Scene)>);
-impl StoredSystem {
-    /// Unifies any system to `FnMut(&mut Scene)` representation and wraps it in [`StoredSystem`].
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum SystemPosition {
+    /// Start position (system will be inserted in the start of a [`SystemStorage`]'s schedule).
     ///
-    fn from_system<Args, F: System<Args>>(mut system: F) -> Self {
-        StoredSystem(Box::new(move |scene: &mut Scene| {
-            let _ = system.run(scene);
-        }))
-    }
+    Start,
+    /// System will be inserted right before system with provided [`SystemId`].
+    ///
+    /// Case where no system with such [`SystemId`] is present in [`SystemStorage`]
+    /// will be handled as the `SystemPosition::Start` case.
+    ///
+    Before(SystemId),
+    /// System will be inserted right after system with provided [`SystemId`].
+    ///
+    /// Case where no system with such [`SystemId`] is present in [`SystemStorage`]
+    /// will be handled as the `SystemPosition::End` case.
+    ///
+    After(SystemId),
+    /// End position (system will be inserted in the end of a [`SystemStorage`]'s schedule).
+    ///
+    End,
+}
 
-    /// Runs underlying unified system.
-    ///
-    fn run(&mut self, scene: &mut Scene) {
-        self.0.run(scene)
-    }
-}
-impl fmt::Debug for StoredSystem {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Stored system")
-    }
-}
 /// [`SystemNode`] struct serves as the emulation of node in doubly linked list.
 ///
 #[derive(Debug)]
@@ -44,9 +38,9 @@ struct SystemNode {
     /// Index of previous system.
     ///
     prev: usize,
-    /// Boxed system.
+    /// Decomposed system.
     ///
-    system: StoredSystem,
+    system: DecomposedSystem,
     /// Index of next system.
     ///
     next: usize,
@@ -61,14 +55,14 @@ struct SystemNode {
 ///
 #[derive(Debug, Default)]
 pub struct SystemStorage {
-    /// `TypeIdMap` that maps [`SystemId`]s to indices in which corresponding system is in a schedule.
-    /// That allows O(1) random access to the linked list nodes.
-    ///
-    system_positions: TypeIdMap<SystemId, usize>,
     /// `Vec` that emulates `LinkedList<S>`.
     /// That allows sequenced access through systems schedule.
     ///
     schedule: Vec<SystemNode>,
+    /// `TypeIdMap` that maps [`SystemId`]s to indices in which corresponding system is in a schedule.
+    /// That allows O(1) random access to the linked list nodes.
+    ///
+    positions: TypeIdMap<SystemId, usize>,
 }
 impl SystemStorage {
     /// Initializes new [`SystemStorage`].
@@ -83,15 +77,15 @@ impl SystemStorage {
     ///
     pub fn new() -> Self {
         SystemStorage {
-            system_positions: TypeIdMap::with_hasher(NoOpHasherState),
             schedule: Vec::new(),
+            positions: TypeIdMap::with_hasher(NoOpHasherState),
         }
     }
 
     /// Clears storage, removing all data. Keeps the allocated memory.
     ///
     pub fn clear(&mut self) {
-        self.system_positions.clear();
         self.schedule.clear();
+        self.positions.clear();
     }
 }

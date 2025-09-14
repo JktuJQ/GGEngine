@@ -11,7 +11,12 @@ use crate::gamecore::{
     },
     scenes::Scene,
 };
-use std::any::{Any, TypeId};
+use seq_macro::seq;
+use std::{
+    any::{type_name, Any, TypeId},
+    fmt,
+    iter::{empty, once},
+};
 
 /// [`SystemId`] id struct is needed to identify [`System`]s in [`Systemconstructed_query`].
 ///
@@ -64,11 +69,15 @@ pub trait System<Args>: 'static {
 
     /// Id of a system.
     ///
+    /// This function requires `self` to allow calling it on functions directly
+    /// (there is no way to name function type and thus call static method on function).
+    /// That also makes this trait dyn compatible, complying with other `ggengine` traits.
+    ///
     /// # Note
     /// Currently in Rust one type could theoretically implement `Fn*` trait multiple times with different arguments.
     /// For that type, [`SystemId`] would be the same and it could lead to some unexpected behaviour.
     ///
-    /// For example, storing that type in [`Systemconstructed_query`] as [`System`] with arguments `Args1`
+    /// For example, storing that type in [`SystemStorage`] as [`System`] with arguments `Args1`
     /// and as [`System`] with arguments `Args2`
     /// would make constructed_query to view those systems as one, because [`SystemId`] of those are equal.
     ///
@@ -84,7 +93,7 @@ pub trait System<Args>: 'static {
 
     /// Runs system function.
     ///
-    /// It is easy to see rom the signature of this function
+    /// It is easy to see from the signature of this function
     /// that every system is isomorphic to `FnMut(&mut Scene) -> Output`
     /// (that is, that all of its arguments could be derived from `&mut Scene`).
     ///
@@ -99,6 +108,17 @@ pub trait System<Args>: 'static {
 /// (`Vec`, iterator, etc.).
 ///
 pub type BoxedSystem<Args, Output> = Box<dyn System<Args, Output = Output>>;
+impl<Args, Output> fmt::Debug for dyn System<Args, Output = Output> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:?} (args: {:?}, output: {:?})",
+            type_name::<Self>(),
+            type_name::<Args>(),
+            type_name::<Output>()
+        )
+    }
+}
 
 impl<Output, F> System<(&mut Scene,)> for F
 where
@@ -110,7 +130,6 @@ where
         self(scene)
     }
 }
-
 macro_rules! impl_system {
     // base case that generates `impl` block
     (
@@ -272,5 +291,162 @@ macro_rules! impl_system {
     };
 }
 impl_system!(for all combinations);
+
+/// [`DecomposedSystem`] struct is what any system system could be coerced to.
+///
+/// If you need to store different systems in one generic container,
+/// systems arguments and return types must be coerced to some common ground types.
+/// `&mut Scene` as argument type and `()` as return type are the only options
+/// to which arguments and return type of any system could be coerced.
+/// So, [`DecomposedSystem`] is just [`SystemId`] and `Box<dyn FnMut(&mut Scene)>` stored together
+/// (basically a [`System`] v-table representation).
+///
+/// # Example
+/// ```rust
+/// # use ggengine::gamecore::systems::{System, DecomposedSystem};
+/// # use ggengine::gamecore::scenes::Scene;
+/// fn system1() {}
+/// fn system2(_: &mut Scene) -> bool { true }
+///
+/// let systems: Vec<DecomposedSystem> = vec![
+///     DecomposedSystem::from_system(system1),
+///     DecomposedSystem::from_system(system2)
+/// ];
+/// ```
+///
+pub struct DecomposedSystem {
+    /// Id of a system which was coerced to [`DecomposedSystem`].
+    ///
+    id: SystemId,
+    /// Boxed system function.
+    ///
+    f: Box<dyn FnMut(&mut Scene)>,
+}
+impl DecomposedSystem {
+    /// Decomposes any system.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::systems::{System, DecomposedSystem};
+    /// fn system() {}
+    ///
+    /// let decomposed_system: DecomposedSystem = DecomposedSystem::from_system(system);
+    /// ```
+    ///
+    pub fn from_system<Args, F: System<Args>>(mut system: F) -> Self {
+        DecomposedSystem {
+            id: system.id(),
+            f: Box::new(move |scene: &mut Scene| {
+                let _ = system.run(scene);
+            }),
+        }
+    }
+
+    /// Returns system function.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::systems::{System, DecomposedSystem};
+    /// # use ggengine::gamecore::scenes::Scene;
+    /// fn system() {
+    ///     println!("in system");
+    /// }
+    ///
+    /// let decomposed_system: DecomposedSystem = DecomposedSystem::from_system(system);
+    ///
+    /// let mut scene: Scene = Scene::new();
+    /// (decomposed_system.system_fn())(&mut scene);  // prints "in system"
+    /// ```
+    ///
+    pub fn system_fn(self) -> Box<dyn FnMut(&mut Scene)> {
+        self.f
+    }
+}
+impl System<(&mut Scene,)> for DecomposedSystem {
+    type Output = ();
+
+    fn id(&self) -> SystemId {
+        self.id
+    }
+
+    fn run(&mut self, scene: &mut Scene) {
+        (self.f)(scene)
+    }
+}
+impl fmt::Debug for DecomposedSystem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Decomposed system with `SystemId` {:?}", self.id)
+    }
+}
+/// [`SystemSet`] trait defines a static set of [`System`]s.
+///
+/// [`SystemSet`] is different from [`ComponentSet`](crate::gamecore::components::ComponentSet)
+/// because you could only operate with value of [`SystemSet`].
+/// That is because it is impossible to name function types in Rust,
+/// so there is no pre-defining type of set just like you would do with [`ComponentSet`](crate::gamecore::components::ComponentSet),
+///
+/// Also, for [`SystemSet`] order does matter,
+/// because it will define order in which [`System`]s will be run.
+/// Order is defined by depth-first traverse ([`SystemSet`] tuples could be nested).
+///
+/// In all other terms, [`SystemSet`] is the same as [`ComponentSet`](crate::gamecore::components::ComponentSet) -
+/// it allows defining sets of [`System`]s that would be used together.
+///
+/// # Example
+/// ```rust
+/// # use ggengine::gamecore::systems::{System, SystemSet};
+/// # use ggengine::gamecore::scenes::Scene;
+/// fn system1() {}
+/// fn system2(_: &mut Scene) {}
+///
+/// fn is_system_set<SystemsArgs, SS: SystemSet<SystemArgs>>(system_set: SS) {}
+/// is_system_set(());
+/// is_system_set((system1, system2));
+/// ```
+///
+pub trait SystemSet<SystemsArgs> {
+    /// Size of [`SystemSet`].
+    ///
+    const SIZE: usize;
+
+    /// Returns iterator of set's systems where each one is decomposed.
+    ///
+    /// This function should return iterator with length of `SystemSet::SIZE`.
+    /// When `const_generics` will land,
+    /// this function should return `[DecomposedSystem; Self::Size]` to prevent buggy implementations.
+    ///
+    fn decomposed_systems(self) -> impl Iterator<Item = DecomposedSystem>;
+}
+impl<Args, S: System<Args>> SystemSet<(Args, S)> for S {
+    const SIZE: usize = 1;
+
+    fn decomposed_systems(self) -> impl Iterator<Item = DecomposedSystem> {
+        once(DecomposedSystem::from_system(self))
+    }
+}
+
+/// [`impl_system_set`] macro implements [`SystemSet`] trait for tuples.
+///
+macro_rules! impl_system_set {
+    ($(($args:ident, $t:ident, $index:tt)),* $(,)?) => {
+        impl<$($args, $t,)*> SystemSet<($($args, $t,)*)> for ($($t,)*)
+        where
+            $($t: SystemSet<$args>,)*
+        {
+            const SIZE: usize = $($t::SIZE + )* 0;
+
+            fn decomposed_systems(self) -> impl Iterator<Item = DecomposedSystem> {
+                empty()$(.chain(self.$index.decomposed_systems()))*
+            }
+        }
+    }
+}
+seq!(SIZE in 0..=16 {
+    #(
+        seq!(N in 0..SIZE {
+            impl_system_set!(#((A~N, S~N, N),)*);
+        });
+    )*
+});
 
 pub use crate::gamecore::{querying::system_query::*, storages::system_storage::*};
