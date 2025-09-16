@@ -4,16 +4,19 @@
 use super::{NoOpHasherState, TypeIdMap};
 use crate::gamecore::{
     scenes::Scene,
-    systems::{System, SystemId},
+    systems::{DecomposedSystem, System, SystemId},
 };
-use std::fmt;
+use std::{
+    mem::{replace, swap},
+    num::Wrapping,
+};
 
 /// [`SystemPosition`] enum lists possible positions
 /// in which new system could be inserted into [`SystemStorage`].
 ///
 /// Docs on [`SystemPosition`] variants describe specifics of each position.
 ///
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum SystemPosition {
     /// Head position (system will be inserted at the start of a [`SystemStorage`]'s schedule).
     ///
@@ -32,54 +35,10 @@ pub enum SystemPosition {
     After(SystemId),
     /// Tail position (system will be inserted at the end of a [`SystemStorage`]'s schedule).
     ///
+    #[default]
     Tail,
 }
 
-/// [`DecomposedSystem`] struct is what any system system could be coerced to.
-///
-/// To store different systems in one generic container,
-/// systems arguments and return types must be coerced to some common ground types.
-/// `&mut Scene` as argument type and `()` as return type are the only options
-/// to which arguments and return type of any system could be coerced.
-/// So, [`DecomposedSystem`] is just [`SystemId`] and `Box<dyn FnMut(&mut Scene)>` stored together
-/// (basically a [`System`] v-table representation).
-///
-struct DecomposedSystem {
-    /// Id of a system which was coerced to [`DecomposedSystem`].
-    ///
-    id: SystemId,
-    /// Boxed system function.
-    ///
-    f: Box<dyn FnMut(&mut Scene)>,
-}
-impl DecomposedSystem {
-    /// Decomposes any system.
-    ///
-    fn from_system<Args, F: System<Args>>(mut system: F) -> Self {
-        DecomposedSystem {
-            id: system.id(),
-            f: Box::new(move |scene: &mut Scene| {
-                let _ = system.run(scene);
-            }),
-        }
-    }
-}
-impl System<(&mut Scene,)> for DecomposedSystem {
-    type Output = ();
-
-    fn id(&self) -> SystemId {
-        self.id
-    }
-
-    fn run(&mut self, scene: &mut Scene) {
-        (self.f)(scene)
-    }
-}
-impl fmt::Debug for DecomposedSystem {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Decomposed system with {:?}", self.id)
-    }
-}
 /// [`SystemNode`] struct serves as the emulation of node in doubly linked list.
 ///
 #[derive(Debug)]
@@ -102,9 +61,69 @@ struct SystemNode {
 /// That allows to store systems in a sequence and
 /// additionally have the ability to change their positions very quickly.
 ///
+/// # Note
+/// [`SystemStorage`] is different from other storages in a sense that
+/// it heavily utilizes ids, not generic typed interface.
+/// That is due to the nature of [`System`]s - they are functions,
+/// and it is impossible to name a type of a function;
+/// so the only way to identify them is to use [`SystemId`]s,
+/// which are bound to unnameable type of concrete [`System`].
+///
+/// # Usage
+/// [`System`]s require `&mut Scene` to run, but since they are stored inside [`SystemStorage`]
+/// which is inside [`Scene`], it becomes very hard to call [`System`].
+/// To call it, you would need to move that [`System`] from [`SystemStorage`].
+/// `SystemStorage::take_system` function does exactly that - it moves the system
+/// out of the storage, leaving placeholder system behind.
+///
+/// That (along with [`SystemQuery`](crate::gamecore::systems::SystemQuery)) allows
+/// systems to operate on other systems in schedule.
+///
+/// Taking and returning, placeholder values are a fairly advanced topic.
+/// Most of the time user of the [`SystemStorage`] would only work
+/// with `SystemStorage::run_system_schedule`.
+///
+/// # Example
+/// ```rust
+/// # use ggengine::gamecore::systems::{SystemStorage, System, SystemId};
+/// # use ggengine::gamecore::scenes::Scene;
+/// fn system1() {
+///     println!("system1");
+/// }
+/// fn system2() {
+///     println!("system2");
+/// }
+/// fn system3() {
+///     println!("system3");
+/// }
+///
+/// let mut scene: Scene = Scene::new();
+/// scene.system_storage.insert_system(system1, Default::default());
+/// scene.system_storage.insert_system(system2, Default::default());
+/// scene.system_storage.insert_system(system3, Default::default());
+///
+/// SystemStorage::run_system_schedule(&mut scene);
+/// // prints "system1", "system2", "system3"
+/// ```
+///
 #[derive(Debug, Default)]
 pub struct SystemStorage {
+    /// Index of schedule head (first system).
+    ///
+    /// Is equal to `0` if schedule is empty.
+    ///
+    schedule_head: usize,
+    /// Schedule of functions.
+    ///
+    /// `Vec` represents doubly linked list,
+    /// where head and tail are linked to each other as well.
+    ///
     schedule: Vec<SystemNode>,
+    /// `TypeIdMap` that holds indices of all systems.
+    ///
+    /// `TypeIdMap` allows implementing O(1) random access
+    /// to the doubly linked list.
+    ///
     positions: TypeIdMap<SystemId, usize>,
 }
 impl SystemStorage {
@@ -120,6 +139,7 @@ impl SystemStorage {
     ///
     pub fn new() -> Self {
         SystemStorage {
+            schedule_head: 0,
             schedule: Vec::new(),
             positions: TypeIdMap::with_hasher(NoOpHasherState),
         }
@@ -128,6 +148,7 @@ impl SystemStorage {
     /// Clears storage, removing all data. Keeps the allocated memory.
     ///
     pub fn clear(&mut self) {
+        self.schedule_head = 0;
         self.schedule.clear();
         self.positions.clear();
     }
@@ -137,100 +158,22 @@ impl SystemStorage {
     /// Returns the index of the tail (last) system.
     ///
     fn tail_index(&self) -> usize {
-        self.schedule.get(0).map_or(0, |node| node.prev)
-    }
-    /// Updates the position mapping for a system at the given index.
-    ///
-    fn update_position(&mut self, index: usize) {
-        let _ = self.positions.insert(self.schedule[index].system.id, index);
-    }
-    /// Inserts a system at the head (start) of the schedule.
-    ///
-    fn insert_at_head(&mut self, system: DecomposedSystem) {
-        let new_index = self.schedule.len();
-
-        let tail_index = self.tail_index();
-
-        self.schedule.push(SystemNode {
-            prev: tail_index,
-            system,
-            next: new_index,
-        });
-
-        self.schedule.swap(0, new_index);
-
-        self.update_position(0);
-        self.update_position(new_index);
-
-        let second_index = self.schedule[new_index].next;
-        self.schedule[second_index].prev = new_index;
-        self.schedule[new_index].prev = 0;
-    }
-    /// Inserts a system before the specified anchor system.
-    ///
-    fn insert_before(&mut self, anchor_index: usize, system: DecomposedSystem) {
-        if anchor_index == 0 {
-            return self.insert_at_head(system);
-        }
-
-        let new_index = self.schedule.len();
-
-        let before_anchor_index = self.schedule[anchor_index].prev;
-
-        self.schedule.push(SystemNode {
-            prev: before_anchor_index,
-            system,
-            next: anchor_index,
-        });
-
-        self.update_position(new_index);
-
-        self.schedule[before_anchor_index].next = new_index;
-        self.schedule[anchor_index].prev = new_index;
-    }
-    /// Inserts a system after the specified anchor system.
-    ///
-    fn insert_after(&mut self, anchor_index: usize, system: DecomposedSystem) {
-        let new_index = self.schedule.len();
-
-        let after_anchor_index = self.schedule[anchor_index].next;
-
-        self.schedule.push(SystemNode {
-            prev: anchor_index,
-            system,
-            next: after_anchor_index,
-        });
-
-        self.update_position(new_index);
-
-        self.schedule[anchor_index].next = new_index;
-        self.schedule[after_anchor_index].prev = new_index;
-    }
-    /// Inserts a system at the tail (end) of the schedule.
-    ///
-    fn insert_at_tail(&mut self, system: DecomposedSystem) {
-        let new_index = self.schedule.len();
-
-        let tail_index = self.tail_index();
-
-        self.schedule.push(SystemNode {
-            prev: tail_index,
-            system,
-            next: 0,
-        });
-
-        self.update_position(new_index);
-
-        self.schedule[tail_index].next = new_index;
-        self.schedule[0].prev = new_index;
+        self.schedule
+            .get(self.schedule_head)
+            .map_or(0, |head| head.prev)
     }
     /// Inserts a system into the storage at the specified position.
+    ///
+    /// Docs on [`SystemPosition`] list all cases and implications of each position.
+    ///
+    /// # Performance
+    /// Although [`SystemStorage`] is optimized for insertion at random positions,
+    /// the best position is at the tail - that way storage maintains its
+    /// internal sequence logically and that improves cache locality.
     ///
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::systems::{SystemStorage, SystemPosition, System, SystemId};
-    /// let mut storage = SystemStorage::new();
-    ///
     /// fn unused_system() {}
     /// fn system1() {}
     /// fn system2() {}
@@ -239,6 +182,8 @@ impl SystemStorage {
     /// fn system5() {}
     /// fn system6() {}
     /// fn system7() {}
+    ///
+    /// let mut storage = SystemStorage::new();
     ///
     /// storage.insert_system(system1, SystemPosition::Head);
     /// storage.insert_system(system2, SystemPosition::Tail);
@@ -271,25 +216,47 @@ impl SystemStorage {
             return;
         }
 
-        let system = DecomposedSystem::from_system(system);
-        match position {
-            SystemPosition::Head => self.insert_at_head(system),
+        let last_index = self.schedule.len();
+
+        let (prev, next) = match position {
+            SystemPosition::Head => {
+                let (prev, next) = (self.tail_index(), self.schedule_head);
+                self.schedule_head = last_index;
+                (prev, next)
+            }
             SystemPosition::Before(anchor_system_id) => {
-                if !self.positions.contains_key(&anchor_system_id) {
-                    self.insert_at_head(system)
-                } else {
-                    self.insert_before(self.positions[&anchor_system_id], system)
+                let anchor_index = *self
+                    .positions
+                    .get(&anchor_system_id)
+                    .unwrap_or(&self.schedule_head);
+
+                if anchor_index == self.schedule_head {
+                    self.schedule_head = last_index;
                 }
+                (self.schedule[anchor_index].prev, anchor_index)
             }
             SystemPosition::After(anchor_system_id) => {
-                if !self.positions.contains_key(&anchor_system_id) {
-                    self.insert_at_tail(system)
-                } else {
-                    self.insert_after(self.positions[&anchor_system_id], system)
-                }
+                let anchor_index = *self
+                    .positions
+                    .get(&anchor_system_id)
+                    .unwrap_or(&self.tail_index());
+                (anchor_index, self.schedule[anchor_index].next)
             }
-            SystemPosition::Tail => self.insert_at_tail(system),
-        }
+            SystemPosition::Tail => (self.tail_index(), self.schedule_head),
+        };
+
+        self.schedule.push(SystemNode {
+            prev,
+            system: DecomposedSystem::from_system(system),
+            next,
+        });
+
+        let _ = self
+            .positions
+            .insert(self.schedule[last_index].system.id(), last_index);
+
+        self.schedule[prev].next = last_index;
+        self.schedule[next].prev = last_index;
     }
 
     /// Removes a system from the storage by its [`SystemId`].
@@ -297,13 +264,13 @@ impl SystemStorage {
     /// # Example
     /// ```rust
     /// # use ggengine::gamecore::systems::{SystemStorage, SystemPosition, System, SystemId};
-    /// let mut storage = SystemStorage::new();
-    ///
     /// fn unused_system() {}
     /// fn system1() {}
     /// fn system2() {}
     /// fn system3() {}
     /// fn system4() {}
+    ///
+    /// let mut storage = SystemStorage::new();
     ///
     /// storage.insert_system(system1, SystemPosition::Head);
     /// storage.insert_system(system2, SystemPosition::Tail);
@@ -359,10 +326,15 @@ impl SystemStorage {
                 if next == last_index { index } else { next },
             )
         };
-        let _ = self.positions.remove(&system.id);
+        let _ = self.positions.remove(&system.id());
 
         if index != last_index {
-            self.update_position(index);
+            let _ = self
+                .positions
+                .insert(self.schedule[index].system.id(), index);
+        }
+        if index == self.schedule_head {
+            self.schedule_head = next;
         }
 
         self.schedule[prev].next = next;
@@ -377,21 +349,276 @@ impl SystemStorage {
         }
     }
 
-    pub fn system_order(&self) -> Vec<SystemId> {
-        let mut order = Vec::new();
-        if self.schedule.is_empty() {
-            return order;
+    /// Returns whether a system with given [`SystemId`] is present or not.
+    ///
+    /// Placeholder systems are not considered present in the storage,
+    /// check docs on [`SystemStorage`] for more info.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::systems::{SystemStorage, System, SystemId};
+    /// fn system1() {}
+    /// fn system2() {}
+    ///
+    /// let mut storage: SystemStorage = SystemStorage::new();
+    ///
+    /// storage.insert_system(system1, Default::default());
+    /// assert!(storage.contains_system(system1.id()));
+    /// assert!(!storage.contains_system(system2.id()));
+    /// ```
+    ///
+    pub fn contains_system(&self, system_id: SystemId) -> bool {
+        self.is_system_taken(system_id) == Some(false)
+    }
+
+    /// Placeholder system that will replace systems when they are taken from [`SystemStorage`].
+    ///
+    /// This function is a no-op.
+    ///
+    /// Check docs on [`SystemStorage`] and `SystemStorage::take_system` for more info.
+    ///
+    pub fn placeholder_system() {}
+    /// Returns whether a system with given [`SystemId`] was taken out from [`SystemStorage`].
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::systems::{SystemStorage, System, SystemId};
+    /// fn system() {}
+    ///
+    /// let mut system_storage: SystemStorage = SystemStorage::new();
+    ///
+    /// assert!(system_storage.is_system_taken(system.id()).is_none());
+    ///
+    /// system_storage.insert_system(system, Default::default());
+    /// assert_eq!(system_storage.is_system_taken(system.id()), Some(false));
+    ///
+    /// system_storage.take_system(system.id());
+    /// assert_eq!(system_storage.is_system_taken(system.id()), Some(true));
+    ///
+    /// system_storage.remove_system(system.id());
+    /// assert!(system_storage.is_system_taken(system.id()).is_none());
+    /// ```
+    ///
+    pub fn is_system_taken(&self, system_id: SystemId) -> Option<bool> {
+        let &index = self.positions.get(&system_id)?;
+        Some(self.schedule[index].system.id() == SystemStorage::placeholder_system.id())
+    }
+    /// Takes system out of the storage, leaving placeholder behind.
+    ///
+    /// [`System`]s require `&mut Scene` to run, but since they are stored inside [`SystemStorage`]
+    /// which is inside [`Scene`], it becomes very hard to call [`System`].
+    /// To call it, you would need to move that [`System`] from [`SystemStorage`].
+    /// `SystemStorage::take_system` function does exactly that - it moves the system
+    /// out of the storage, leaving placeholder system behind.
+    ///
+    /// Leaving placeholder system is convenient because then returning system
+    /// would be trivial - there would be no need to remember position of the system
+    /// (and storage won't need to rearrange systems internally, maintaining order).
+    ///
+    /// Trying to move placeholder system is prohibited.
+    ///
+    /// If the system should be taken permanently from the storage, consider `SystemStorage::remove_system`.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::systems::{SystemStorage, System, SystemId, DecomposedSystem};
+    /// # use ggengine::gamecore::scenes::Scene;
+    /// fn system() {
+    ///     println!("system");
+    /// }
+    ///
+    /// let mut system_storage: SystemStorage = SystemStorage::new();
+    ///
+    /// assert!(system_storage.take_system(system.id()).is_none());
+    ///
+    /// system_storage.insert_system(system, Default::default());
+    /// let mut system: DecomposedSystem = system_storage.take_system(system.id())
+    ///     .expect("System was inserted");
+    /// system.run(&mut Scene::new());  // prints "system"
+    ///
+    /// assert!(system_storage.take_system(system.id()).is_none());
+    /// ```
+    ///
+    pub fn take_system(&mut self, system_id: SystemId) -> Option<DecomposedSystem> {
+        let &index = self.positions.get(&system_id)?;
+
+        let system = &mut self.schedule[index].system;
+        if system.id() == SystemStorage::placeholder_system.id() {
+            return None;
         }
-        let mut current_index = 0;
 
-        loop {
-            order.push(self.schedule[current_index].system.id);
-            current_index = self.schedule[current_index].next;
+        Some(replace(
+            system,
+            DecomposedSystem::from_system(SystemStorage::placeholder_system),
+        ))
+    }
+    /// Returns system into the storage from which it was previously moved.
+    ///
+    /// If the system is not present in the storage in placeholder form
+    /// (which could be checked by `SystemStorage::is_system_taken`),
+    /// an error is returned.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::systems::{SystemStorage, System, SystemId, DecomposedSystem};
+    /// # use ggengine::gamecore::scenes::Scene;
+    /// fn system1() {}
+    /// fn system2() {}
+    /// fn system3() {}
+    ///
+    /// let mut system_storage: SystemStorage = SystemStorage::new();
+    ///
+    /// system_storage.insert_system(system1, Default::default());
+    /// system_storage.insert_system(system2, Default::default());
+    /// system_storage.insert_system(system3, Default::default());
+    ///
+    /// let system: DecomposedSystem = system_storage.take_system(system2.id())
+    ///     .expect("System was inserted");
+    /// let _ = system_storage.return_taken_system(system)
+    ///     .expect("System was taken");
+    ///
+    /// assert_eq!(system_storage.system_order(), vec![
+    ///     system1.id(),
+    ///     system2.id(),
+    ///     system3.id(),
+    /// ]);
+    /// ```
+    ///
+    pub fn return_taken_system(
+        &mut self,
+        system: DecomposedSystem,
+    ) -> Result<(), DecomposedSystem> {
+        let Some(&index) = self.positions.get(&system.id()) else {
+            return Err(system);
+        };
 
-            if current_index == 0 {
-                break;
-            }
+        let storage_system = &mut self.schedule[index].system;
+        if storage_system.id() != SystemStorage::placeholder_system.id() {
+            return Err(system);
+        }
+
+        let _ = replace(storage_system, system);
+        Ok(())
+    }
+
+    /// Runs [`Scene`]'s [`SystemStorage`] schedule.
+    ///
+    /// This function runs every function in [`Scene`]'s [`SystemStorage`] schedule.
+    /// It is more efficient than calling
+    /// `SystemStorage::take_system` and `SystemStorage::return_taken_system` sequentially.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::systems::{SystemStorage, System, SystemId};
+    /// # use ggengine::gamecore::scenes::Scene;
+    /// fn system1() {
+    ///     println!("system1");
+    /// }
+    /// fn system2() {
+    ///     println!("system2");
+    /// }
+    /// fn system3() {
+    ///     println!("system3");
+    /// }
+    ///
+    /// let mut scene: Scene = Scene::new();
+    /// scene.system_storage.insert_system(system1, Default::default());
+    /// scene.system_storage.insert_system(system2, Default::default());
+    /// scene.system_storage.insert_system(system3, Default::default());
+    ///
+    /// SystemStorage::run_system_schedule(&mut scene);
+    /// // prints "system1", "system2", "system3"
+    /// ```
+    ///
+    pub fn run_system_schedule(scene: &mut Scene) {
+        let mut system = DecomposedSystem::from_system(SystemStorage::placeholder_system);
+
+        let mut schedule_index = scene.system_storage.schedule_head;
+        for _ in 0..scene.system_storage.schedule.len() {
+            schedule_index = scene.system_storage.schedule[schedule_index].next;
+
+            swap(
+                &mut scene.system_storage.schedule[schedule_index].system,
+                &mut system,
+            );
+            system.run(scene);
+            swap(
+                &mut scene.system_storage.schedule[schedule_index].system,
+                &mut system,
+            );
+        }
+    }
+
+    /// Returns [`SystemId`]s in the order they appear in the schedule.
+    ///
+    /// # Example
+    /// ```
+    /// # use ggengine::gamecore::systems::{SystemStorage, SystemPosition, System, SystemId};
+    /// # use ggengine::gamecore::scenes::Scene;
+    /// fn system1() {}
+    /// fn system2() {}
+    /// fn system3() {}
+    /// fn system4() {}
+    ///
+    /// let mut storage = SystemStorage::new();
+    ///
+    /// storage.insert_system(system1, SystemPosition::Head);
+    /// storage.insert_system(system2, SystemPosition::Tail);
+    /// storage.insert_system(system3, SystemPosition::Head);
+    /// storage.insert_system(system4, SystemPosition::After(system1.id()));
+    ///
+    /// assert_eq!(storage.system_order(), vec![
+    ///     system3.id(),
+    ///     system1.id(),
+    ///     system4.id(),
+    ///     system2.id(),
+    /// ]);
+    /// ```
+    ///
+    pub fn system_order(&self) -> Vec<SystemId> {
+        let mut order = Vec::with_capacity(self.schedule.len());
+
+        let mut schedule_index = self.schedule_head;
+        for _ in 0..self.schedule.len() {
+            let node = &self.schedule[schedule_index];
+            schedule_index = node.next;
+
+            order.push(node.system.id());
         }
         order
+    }
+    /// Rearranges the systems in the [`SystemStorage`] to match their logical schedule order.
+    /// This can improve cache locality and simplify debugging.
+    ///
+    pub fn reorder(&mut self) {
+        let mut reordered_schedule = Vec::with_capacity(self.schedule.capacity());
+        let len = self.schedule.len();
+
+        let mut schedule_index = self.schedule_head;
+        for index in 0..len {
+            let mut node = replace(
+                &mut self.schedule[schedule_index],
+                SystemNode {
+                    prev: 0,
+                    system: DecomposedSystem::from_system(|| {}),
+                    next: 0,
+                },
+            );
+            schedule_index = node.next;
+
+            node.prev = (Wrapping(index) - Wrapping(1)).0;
+            node.next = (Wrapping(index) + Wrapping(1)).0;
+
+            reordered_schedule.push(node);
+            let _ = self
+                .positions
+                .insert(reordered_schedule[index].system.id(), index);
+        }
+        if len > 0 {
+            reordered_schedule[0].prev = len - 1;
+            reordered_schedule[len - 1].next = 0;
+        }
+        self.schedule_head = 0;
+        self.schedule = reordered_schedule;
     }
 }

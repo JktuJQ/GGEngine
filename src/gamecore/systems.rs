@@ -128,6 +128,15 @@ where
         self(scene)
     }
 }
+/// [`impl_system`] macro implements [`System`] trait for functions,
+/// which arguments could be derived from `&mut Scene`.
+///
+/// More specifically, this macro implements [`System`] trait for functions
+/// where each argument is a query type
+/// ([`ComponentQuery`]/[`ResourceQuery`]/[`EventQuery`]/[`SystemQuery`]).
+/// Arguments are not allowed to be repeated, so functions with
+/// up to 4 query type arguments are implementors of [`System`] trait.
+///
 macro_rules! impl_system {
     // base case that generates `impl` block
     (
@@ -289,5 +298,97 @@ macro_rules! impl_system {
     };
 }
 impl_system!(for all combinations);
+
+/// [`DecomposedSystem`] struct is what any system system could be coerced to.
+///
+/// To store different systems in one generic container,
+/// systems arguments and return types must be coerced to some common ground types.
+/// `&mut Scene` as argument type and `()` as return type are the only options
+/// to which arguments and return type of any system could be coerced.
+/// So, [`DecomposedSystem`] is just [`SystemId`] and `Box<dyn FnMut(&mut Scene)>` stored together
+/// (basically a [`System`] v-table representation).
+///
+/// # Example
+/// ```rust
+/// # use ggengine::gamecore::systems::{System, DecomposedSystem};
+/// # use ggengine::gamecore::scenes::Scene;
+/// fn system() {
+///     println!("system");
+/// }
+///
+/// let mut decomposed_system: DecomposedSystem = DecomposedSystem::from_system(system);
+/// assert_eq!(decomposed_system.id(), system.id());
+/// decomposed_system.run(&mut Scene::new());  // prints "system"
+/// ```
+///
+pub struct DecomposedSystem {
+    /// Id of a system which was coerced to [`DecomposedSystem`].
+    ///
+    id: SystemId,
+    /// Boxed system function.
+    ///
+    f: Box<dyn FnMut(&mut Scene)>,
+}
+impl DecomposedSystem {
+    /// Decomposes any system.
+    ///
+    /// This function allows unifying different systems to one type.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::systems::{System, DecomposedSystem};
+    /// # use ggengine::gamecore::scenes::Scene;
+    /// fn system1() {}
+    /// fn system2(_: &mut Scene) -> u32 { 42 }
+    ///
+    /// let systems: Vec<DecomposedSystem> = vec![
+    ///     DecomposedSystem::from_system(system1),
+    ///     DecomposedSystem::from_system(system2),
+    /// ];
+    /// ```
+    ///
+    pub fn from_system<Args, F: System<Args>>(mut system: F) -> Self {
+        DecomposedSystem {
+            id: system.id(),
+            f: Box::new(move |scene: &mut Scene| {
+                let _ = system.run(scene);
+            }),
+        }
+    }
+
+    /// Returns inner system function.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use ggengine::gamecore::systems::{System, DecomposedSystem};
+    /// # use ggengine::gamecore::scenes::Scene;
+    /// fn system() {
+    ///     println!("system");
+    /// }
+    ///
+    /// let decomposed_system: DecomposedSystem = DecomposedSystem::from_system(system);
+    /// let mut system_fn: Box<dyn FnMut(&mut Scene)> = decomposed_system.system_fn();
+    /// system_fn(&mut Scene::new())  // prints "system"
+    /// ```
+    pub fn system_fn(self) -> Box<dyn FnMut(&mut Scene)> {
+        self.f
+    }
+}
+impl System<(&mut Scene,)> for DecomposedSystem {
+    type Output = ();
+
+    fn id(&self) -> SystemId {
+        self.id
+    }
+
+    fn run(&mut self, scene: &mut Scene) {
+        (self.f)(scene)
+    }
+}
+impl fmt::Debug for DecomposedSystem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Decomposed system with {:?}", self.id)
+    }
+}
 
 pub use crate::gamecore::{querying::system_query::*, storages::system_storage::*};
