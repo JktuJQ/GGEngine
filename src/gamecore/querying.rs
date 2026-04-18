@@ -46,4 +46,3 @@ seq!(SIZE in 0..=16 {
 pub(super) mod component_query;
 pub(super) mod event_query;
 pub(super) mod resource_query;
-pub(super) mod system_query;

@@ -4,7 +4,6 @@
 
 use crate::gamecore::{
     components::ComponentStorage, events::EventStorage, resources::ResourceStorage,
-    systems::SystemStorage,
 };
 
 /// [`Scene`] struct composes all structs that implement ECS architecture.
@@ -20,9 +19,6 @@ pub struct Scene {
     /// Storage that contains events.
     ///
     pub event_storage: EventStorage,
-    /// Storage that contains systems.
-    ///
-    pub system_storage: SystemStorage,
 }
 impl Scene {
     /// Initializes new [`Scene`].
@@ -40,7 +36,6 @@ impl Scene {
             component_storage: ComponentStorage::new(),
             resource_storage: ResourceStorage::new(),
             event_storage: EventStorage::new(),
-            system_storage: SystemStorage::new(),
         }
     }
 
@@ -50,6 +45,5 @@ impl Scene {
         self.component_storage.clear();
         self.resource_storage.clear();
         self.event_storage.clear();
-        self.system_storage.clear();
     }
 }

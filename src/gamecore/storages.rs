@@ -64,4 +64,3 @@ type TypeIdMap<K, V> = HashMap<K, V, NoOpHasherState>;
 pub(super) mod component_storage;
 pub(super) mod event_storage;
 pub(super) mod resource_storage;
-pub(super) mod system_storage;
