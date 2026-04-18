@@ -155,7 +155,7 @@ impl ComponentStorage {
     /// Inserts empty entity.
     /// Equivalent of `entity_component_storage.insert_entity(())`.
     ///
-    pub fn insert_empty_entity(&mut self) -> EntityMut {
+    pub fn insert_empty_entity(&mut self) -> EntityMut<'_> {
         self.insert_entity(())
     }
     /// Inserts entity with components into [`ComponentStorage`]
@@ -176,7 +176,7 @@ impl ComponentStorage {
     /// let player: EntityId = storage.insert_entity((Player, Health(10))).id();
     /// ```
     ///
-    pub fn insert_entity<CS: ComponentSet>(&mut self, components: CS) -> EntityMut {
+    pub fn insert_entity<CS: ComponentSet>(&mut self, components: CS) -> EntityMut<'_> {
         let entity_id = self.obtain_entity_ids::<1>()[0];
         components.insert_set(entity_id, self);
         EntityMut::new(entity_id, self)
@@ -214,7 +214,7 @@ impl ComponentStorage {
     pub fn insert_many_entities<CS: ComponentSet, const N: usize>(
         &mut self,
         many_components: [CS; N],
-    ) -> [EntityRef; N] {
+    ) -> [EntityRef<'_>; N] {
         let ids = self.obtain_entity_ids::<N>();
         for (entity_id, components) in ids.into_iter().rev().zip(many_components.into_iter().rev())
         {
@@ -299,7 +299,7 @@ impl ComponentStorage {
     /// let player_ref: EntityRef = storage.entity(player).expect("Entity was inserted");
     /// ```
     ///
-    pub fn entity(&self, entity_id: EntityId) -> Option<EntityRef> {
+    pub fn entity(&self, entity_id: EntityId) -> Option<EntityRef<'_>> {
         if self.contains_entity(entity_id) {
             Some(EntityRef::new(entity_id, self))
         } else {
@@ -318,7 +318,7 @@ impl ComponentStorage {
     /// let player_mut: EntityMut = storage.entity_mut(player).expect("Entity was inserted");
     /// ```
     ///
-    pub fn entity_mut(&mut self, entity_id: EntityId) -> Option<EntityMut> {
+    pub fn entity_mut(&mut self, entity_id: EntityId) -> Option<EntityMut<'_>> {
         if self.contains_entity(entity_id) {
             Some(EntityMut::new(entity_id, self))
         } else {

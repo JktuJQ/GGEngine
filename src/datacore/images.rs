@@ -557,7 +557,7 @@ impl<'a> Image<'a> {
     /// let image2: Image = image1.crop(ImageArea::from(((50, 50), (100, 100))));
     /// ```
     ///
-    pub fn crop(&self, area: ImageArea) -> Image {
+    pub fn crop(&self, area: ImageArea) -> Image<'_> {
         let mut result = ImageSurface::new(area.width(), area.height(), self.surface.pixel_format_enum())
             .expect("`ImageSystem::init` should be called before using anything else from `ggengine::datacore::image` submodule..");
         let _ = self

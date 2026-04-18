@@ -43,7 +43,7 @@ pub struct EntityRef<'a> {
 impl EntityRef<'_> {
     /// Creates new [`EntityRef`], immutably borrowing [`ComponentStorage`].
     ///
-    pub(super) fn new(entity_id: EntityId, storage: &ComponentStorage) -> EntityRef {
+    pub(super) fn new(entity_id: EntityId, storage: &ComponentStorage) -> EntityRef<'_> {
         EntityRef { entity_id, storage }
     }
 
@@ -127,7 +127,7 @@ pub struct EntityMut<'a> {
 impl EntityMut<'_> {
     /// Creates new [`EntityMut`], immutably borrowing [`ComponentStorage`].
     ///
-    pub(super) fn new(entity_id: EntityId, storage: &mut ComponentStorage) -> EntityMut {
+    pub(super) fn new(entity_id: EntityId, storage: &mut ComponentStorage) -> EntityMut<'_> {
         EntityMut { entity_id, storage }
     }
 

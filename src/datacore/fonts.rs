@@ -289,7 +289,7 @@ impl Font {
     ///     .expect("Conversion should not fail.");
     /// ```
     ///
-    pub fn show_text(&self, mode: FontShowMode, text: &str) -> Result<Image, Error> {
+    pub fn show_text(&self, mode: FontShowMode, text: &str) -> Result<Image<'_>, Error> {
         mode.apply(self.font.render(text))
     }
     /// Transforms given character using this font and given [`FontShowMode`] into image.
@@ -308,7 +308,7 @@ impl Font {
     ///     .expect("Conversion should not fail.");
     /// ```
     ///
-    pub fn show_character(&self, mode: FontShowMode, character: char) -> Result<Image, Error> {
+    pub fn show_character(&self, mode: FontShowMode, character: char) -> Result<Image<'_>, Error> {
         mode.apply(self.font.render_char(character))
     }
     /// Transforms given Latin-1 text using this font and given [`FontShowMode`] into image.
@@ -328,7 +328,11 @@ impl Font {
     /// ).expect("Conversion should not fail.");
     /// ```
     ///
-    pub fn show_latin1_text(&self, mode: FontShowMode, latin1_text: &[u8]) -> Result<Image, Error> {
+    pub fn show_latin1_text(
+        &self,
+        mode: FontShowMode,
+        latin1_text: &[u8],
+    ) -> Result<Image<'_>, Error> {
         mode.apply(self.font.render_latin1(latin1_text))
     }
 

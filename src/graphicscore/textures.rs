@@ -111,7 +111,7 @@ impl InnerTextureCreator<'_> {
         height: u32,
         format: Option<PixelFormat>,
         access_type: AccessType,
-    ) -> Texture {
+    ) -> Texture<'_> {
         Texture {
             texture: match self {
                 InnerTextureCreator::ForImage(texture_creator) => texture_creator
@@ -135,7 +135,7 @@ impl InnerTextureCreator<'_> {
     }
     /// Creates [`Texture`] from the [`Image`].
     ///
-    fn create_texture_from_image(&self, image: &Image) -> Texture {
+    fn create_texture_from_image(&self, image: &Image) -> Texture<'_> {
         Texture {
             texture: match self {
                 InnerTextureCreator::ForImage(texture_creator) => texture_creator
@@ -149,7 +149,7 @@ impl InnerTextureCreator<'_> {
     }
     /// Creates [`Texture`] from bytes of supported format ('.png', '.jpg', but not raw buffer).
     ///
-    fn create_texture_from_bytes(&self, bytes: Box<[u8]>) -> Result<Texture, Error> {
+    fn create_texture_from_bytes(&self, bytes: Box<[u8]>) -> Result<Texture<'_>, Error> {
         match self {
             InnerTextureCreator::ForImage(texture_creator) => {
                 texture_creator.load_texture_bytes(&bytes)
@@ -163,7 +163,7 @@ impl InnerTextureCreator<'_> {
     }
     /// Creates [`Texture`] from the file.
     ///
-    fn create_texture_from_file(&self, filename: impl AsRef<Path>) -> Result<Texture, Error> {
+    fn create_texture_from_file(&self, filename: impl AsRef<Path>) -> Result<Texture<'_>, Error> {
         match self {
             InnerTextureCreator::ForImage(texture_creator) => {
                 texture_creator.load_texture(filename)
@@ -236,23 +236,23 @@ impl<'a> TextureCreator<'a> {
         height: u32,
         format: Option<PixelFormat>,
         access_type: AccessType,
-    ) -> Texture {
+    ) -> Texture<'_> {
         self.texture_creator
             .create_texture(width, height, format, access_type)
     }
     /// Creates [`Texture`] from the [`Image`].
     ///
-    pub fn create_texture_from_image(&self, image: &Image) -> Texture {
+    pub fn create_texture_from_image(&self, image: &Image) -> Texture<'_> {
         self.texture_creator.create_texture_from_image(image)
     }
     /// Creates [`Texture`] from bytes of supported format ('.png', '.jpg', but not raw buffer).
     ///
-    pub fn create_texture_from_bytes(&self, bytes: Box<[u8]>) -> Result<Texture, Error> {
+    pub fn create_texture_from_bytes(&self, bytes: Box<[u8]>) -> Result<Texture<'_>, Error> {
         self.texture_creator.create_texture_from_bytes(bytes)
     }
     /// Creates [`Texture`] from the file.
     ///
-    pub fn create_texture_from_file(&self, filename: impl AsRef<Path>) -> Result<Texture, Error> {
+    pub fn create_texture_from_file(&self, filename: impl AsRef<Path>) -> Result<Texture<'_>, Error> {
         self.texture_creator.create_texture_from_file(filename)
     }
 }
